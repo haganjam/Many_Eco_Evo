@@ -24,16 +24,39 @@ euc_dat <- euc_dat %>%
 # Perform various checks and balances on the data
 
 # Check the structure of the different variables
-str(euc_dat)
 
-nrow()
+str(euc_dat) # variables are structured as expected
 
-ncol()
+# Check various individual variables
+euc_dat$Season %>% 
+  unique()
 
-unique()
+euc_dat$Property %>% 
+  unique() %>%
+  length()
 
-# Check for NAs
+euc_dat$Aspect %>%
+  unique()
 
+# Check the dimensions of the data
+nrow(euc_dat)
+
+ncol(euc_dat)
+
+# Check for missing data
+lapply(euc_dat, function(x) { if_else(is.na(x), 1, 0) %>% sum() } )
+
+# Which rows have missing data for different variables
+lapply(euc_dat, function(x) { 
+  bind_cols(SurveyID = euc_dat$SurveyID, na_row = is.na(x) ) %>%
+    filter(na_row == TRUE) %>%
+    pull(SurveyID) 
+  } )
+
+# Therefore, different rows have different types of missing data
+
+
+# How is Euc_canopy_cover and distance_to_Eucalypt_canopy_m correlated?
 
 
 
