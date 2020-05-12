@@ -55,6 +55,69 @@ lapply(euc_dat, function(x) {
 
 # Therefore, different rows have different types of missing data
 
+# Remove rows without complete data
+euc_dat <- euc_dat %>%
+  filter_all( all_vars( (!is.na(.)) ) )
+
+# Check basic summary statistics
+summary(euc_dat)
+
+# Site variables
+site_vars <- c("SurveyID", "Date", "Season", "Property", "quadrat_no", 
+               "Easting", "Northing" )
+
+# Cover variables
+cov_vars <- c("ExoticAnnualGrass_cover", "ExoticAnnualHerb_cover", "ExoticPerennialHerb_cover", 
+              "ExoticPerennialGrass_cover", "ExoticShrub_cover", "NativePerennialFern_cover", 
+              "NativePerennialGrass_cover", "NativePerennialHerb_cover", "NativePerennialGraminoid_cover", 
+              "NativeShrub_cover", "BareGround_cover", "Litter_cover", "MossLichen_cover", "Rock_cover"
+              )
+
+# Eucalyptus variables
+euc_vars <- c("Euc_canopy_cover", "distance_to_Eucalypt_canopy_m")
+
+# Soil variables
+soil_vars <- c("annual_precipitation", "precipitation_warmest_quarter", 
+              "precipitation_coldest_quarter", "PET", "MrVBF", "K_perc", "Th_ppm", 
+              "U_ppm", "SRad_Jan", "SRad_Jul")
+
+# Precipitation variables
+prec_vars <- c("annual_precipitation", "precipitation_warmest_quarter", 
+               "precipitation_coldest_quarter", "PET")
+
+# Landscape position
+land_vars <- c("landscape_position", "MrVBF")
+
+# Sun variables and aspect
+sun_vars <- c("Aspect", "SRad_Jan", "SRad_Jul")
+
+
+# Do the remotely sensed sun variables represent aspect?
+ggplot(data = euc_dat %>%
+         filter(landscape_position == "slope"),
+       mapping = aes(x = SRad_Jul, y = SRad_Jan, colour = Aspect)) +
+  geom_point()
+
+sun_clust <- dist(select(euc_dat, sun_vars, -Aspect) %>% 
+       scale(scale = TRUE, center = TRUE),
+     method = "euclidean")
+
+sun_clust <- hclust(sun_clust)
+
+plot(sun_clust)
+
+# Do the remotely sensed landscape variables represent landscape position?
+ggplot(data = euc_dat,
+       mapping = aes(x = landscape_position, y = MrVBF)) +
+  geom_point() +
+  theme_classic()
+
+
+
+
+
+
+
 
 # How is Euc_canopy_cover and distance_to_Eucalypt_canopy_m correlated?
 
