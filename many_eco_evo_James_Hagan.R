@@ -1,18 +1,27 @@
-################################################################################################
-### Many Eco Evo analysis: James G. Hagan ######################################################
-################################################################################################
 
-# Load relevant libraries
-library(tidyverse)
+# Title: ManyEcoEvo analysis (James G. Hagan)
 
-# Load the data
+# load relevant libraries
+library(readr)
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(ggplot2)
+library(broom)
+library(RColorBrewer)
+library(viridis)
+library(here)
+library(corrplot)
+
+# load the data
 euc_dat <- readr::read_delim("data/Euc_data.csv", delim = ",")
 
-# Check the variables
+# check the variables
 euc_dat %>% names()
 
-# Rename problematic variables names
-euc_dat <- euc_dat %>%
+# rename problematic variables names
+euc_dat <- 
+  euc_dat %>%
   rename(Easting = "Easting ",
          quadrat_no = "Quadrat no",
          landscape_position = "Landscape position",
@@ -21,13 +30,13 @@ euc_dat <- euc_dat %>%
          euc_sdlgs_2m = "euc_sdlgs>2m"
          )
 
-# Perform various checks and balances on the data
+### perform various checks and balances on the data
 
-# Check the structure of the different variables
+# check the structure of the different variables
 
 str(euc_dat) # variables are structured as expected
 
-# Check various individual variables
+# check various individual variables
 euc_dat$Season %>% 
   unique()
 
@@ -38,96 +47,169 @@ euc_dat$Property %>%
 euc_dat$Aspect %>%
   unique()
 
-# Check the dimensions of the data
+# check the dimensions of the data
 nrow(euc_dat)
 
 ncol(euc_dat)
 
-# Check for missing data
+# check for missing data
 lapply(euc_dat, function(x) { if_else(is.na(x), 1, 0) %>% sum() } )
 
-# Which rows have missing data for different variables
+# which rows have missing data for different variables
 lapply(euc_dat, function(x) { 
   bind_cols(SurveyID = euc_dat$SurveyID, na_row = is.na(x) ) %>%
     filter(na_row == TRUE) %>%
     pull(SurveyID) 
   } )
 
-# Therefore, different rows have different types of missing data
+# different rows have different types of missing data
 
-# Remove rows without complete data
-euc_dat <- euc_dat %>%
+# remove rows without complete data
+euc_dat <- 
+  euc_dat %>%
   filter_all( all_vars( (!is.na(.)) ) )
 
-# Check basic summary statistics
+# check basic summary statistics
 summary(euc_dat)
 
-# Site variables
+# site variables
 site_vars <- c("SurveyID", "Date", "Season", "Property", "quadrat_no", 
                "Easting", "Northing" )
 
-# Cover variables
+# cover variables
 cov_vars <- c("ExoticAnnualGrass_cover", "ExoticAnnualHerb_cover", "ExoticPerennialHerb_cover", 
               "ExoticPerennialGrass_cover", "ExoticShrub_cover", "NativePerennialFern_cover", 
               "NativePerennialGrass_cover", "NativePerennialHerb_cover", "NativePerennialGraminoid_cover", 
               "NativeShrub_cover", "BareGround_cover", "Litter_cover", "MossLichen_cover", "Rock_cover"
               )
 
-# Eucalyptus variables
+# eucalyptus variables
 euc_vars <- c("Euc_canopy_cover", "distance_to_Eucalypt_canopy_m")
 
-# Soil variables
-soil_vars <- c("annual_precipitation", "precipitation_warmest_quarter", 
-              "precipitation_coldest_quarter", "PET", "MrVBF", "K_perc", "Th_ppm", 
-              "U_ppm", "SRad_Jan", "SRad_Jul")
+# soil variables
+soil_vars <- c("K_perc", "Th_ppm", "U_ppm")
 
-# Precipitation variables
+# precipitation variables
 prec_vars <- c("annual_precipitation", "precipitation_warmest_quarter", 
                "precipitation_coldest_quarter", "PET")
 
-# Landscape position
+# landscape position
 land_vars <- c("landscape_position", "MrVBF")
 
-# Sun variables and aspect
+# sun variables and aspect
 sun_vars <- c("Aspect", "SRad_Jan", "SRad_Jul")
 
+# seedling variables
+seed_vars <- c("euc_sdlgs0_50cm", "euc_sdlgs_50cm_2m", "euc_sdlgs_2m")
 
-# Do the remotely sensed sun variables represent aspect?
-ggplot(data = euc_dat %>%
-         filter(landscape_position == "slope"),
-       mapping = aes(x = SRad_Jul, y = SRad_Jan, colour = Aspect)) +
-  geom_point()
 
-sun_clust <- dist(select(euc_dat, sun_vars, -Aspect) %>% 
-       scale(scale = TRUE, center = TRUE),
-     method = "euclidean")
+### do remotely sensed sun variables represent aspect?
 
-sun_clust <- hclust(sun_clust)
+euc_dat %>% 
+  group_by(Aspect) %>%
+  summarise(n = n())
 
-plot(sun_clust)
+euc_dat %>% 
+  select(site_vars, sun_vars) %>%
+  ggplot(data = .,
+         mapping = aes(x = Aspect, y = SRad_Jul, colour = SRad_Jan)) +
+  geom_point() +
+  facet_wrap(~Season, scales = "free")
 
-# Do the remotely sensed landscape variables represent landscape position?
+euc_dat %>% 
+  select(site_vars, sun_vars) %>%
+  ggplot(data = .,
+         mapping = aes(x = SRad_Jan, y = SRad_Jul)) +
+  geom_point() +
+  facet_wrap(~Season, scales = "free")
+
+
+
+### do the remotely sensed variables represent landscape position?
 ggplot(data = euc_dat,
        mapping = aes(x = landscape_position, y = MrVBF)) +
   geom_point() +
   theme_classic()
 
 
+### how is Euc_canopy_cover and distance_to_Eucalypt_canopy_m correlated?
+euc_vars
+
+ggplot(data = euc_dat,
+       mapping = aes(x = Euc_canopy_cover, y = distance_to_Eucalypt_canopy_m)) +
+  geom_point() +
+  theme_classic()
+
+euc_dat %>%
+  filter(Euc_canopy_cover > 0, distance_to_Eucalypt_canopy_m > 0) %>%
+  View()
+
+# strange value where canopy cover is high despite nearest Eucalyptus 38 m away?
+
+### check the precipitation variables
+prec_vars
+
+euc_dat %>%
+  split(., .$Season) %>%
+  lapply(function (x) {select(x, prec_vars) %>% pairs()} )
+
+euc_dat %>%
+  split(., .$Season) %>%
+  lapply(function (x) {select(x, prec_vars) %>% cor() } )
+
+# all precipitation variables are highly correlated
 
 
+### check the soil variables
+soil_vars
+
+euc_dat %>%
+  split(., .$Season) %>%
+  lapply(function (x) {select(x, soil_vars) %>% pairs()} )
+
+euc_dat %>%
+  split(., .$Season) %>%
+  lapply(function (x) {select(x, soil_vars) %>% cor() } )
 
 
+### cover variables
+cov_vars
+
+euc_dat %>%
+  select(cov_vars) %>%
+  rowSums()
+
+# check the grass variables
+euc_dat %>%
+  split(., .$Season) %>%
+  lapply(function (x) {
+    select(x, cov_vars[grepl("rass", cov_vars)]) %>% pairs()
+    } 
+    )
+
+# check the bare ground ish variables
+euc_dat %>%
+  split(., .$Season) %>%
+  lapply(function (x) {
+    select(x, BareGround_cover, Litter_cover, MossLichen_cover, Rock_cover) %>% 
+      pairs()
+  } 
+  )
 
 
-# How is Euc_canopy_cover and distance_to_Eucalypt_canopy_m correlated?
+### seedling variables
+seed_vars
 
+euc_dat %>%
+  split(., .$Season) %>%
+  lapply(function (x) {
+    select(x, seed_vars) %>% pairs()
+  } 
+  )
 
-
-
-
-
-
-
+euc_dat %>%
+  filter(euc_sdlgs_2m > 0) %>%
+  nrow()
 
 
 
