@@ -103,6 +103,9 @@ sun_vars <- c("Aspect", "SRad_Jan", "SRad_Jul")
 seed_vars <- c("euc_sdlgs0_50cm", "euc_sdlgs_50cm_2m", "euc_sdlgs_2m")
 
 
+
+### data exploration
+
 ### do remotely sensed sun variables represent aspect?
 
 euc_dat %>% 
@@ -179,11 +182,11 @@ euc_dat %>%
   select(cov_vars) %>%
   rowSums()
 
-# check the grass variables
+# check correlations among the cover variables
 euc_dat %>%
   split(., .$Season) %>%
   lapply(function (x) {
-    select(x, cov_vars[grepl("rass", cov_vars)]) %>% pairs()
+    select(x, cov_vars[grepl("Herb", cov_vars)]) %>% pairs()
     } 
     )
 
@@ -211,11 +214,115 @@ euc_dat %>%
   filter(euc_sdlgs_2m > 0) %>%
   nrow()
 
+euc_dat %>%
+  select(site_vars, seed_vars) %>%
+  mutate(sdl_0_2m = (euc_sdlgs0_50cm + euc_sdlgs_50cm_2m),
+         sdl_0_more_2m = (euc_sdlgs0_50cm + euc_sdlgs_50cm_2m + euc_sdlgs_2m),
+         sdl_2m_more = (euc_sdlgs_50cm_2m + euc_sdlgs_2m)) %>% 
+  split(., .$Season) %>%
+  lapply(function (x) {
+    select(x, contains("sdl")) %>% pairs()
+  } 
+  )
+
+
+# check proportion of different cover variables
+euc_dat$total_cover <- 
+  euc_dat %>%
+  select(cov_vars) %>%
+  rowSums()
+
+euc_dat %>%
+  mutate_at(vars(cov_vars), ~(./total_cover)*100 ) %>%
+  select(site_vars, cov_vars) %>%
+  group_by(Property) %>%
+  summarise_at(vars(cov_vars), ~mean(., na.rm = TRUE)) %>%
+  gather(cov_vars, key = "key", value = "value") %>%
+  ggplot(data = .,
+         mapping = aes(x = value, fill = key)) +
+  geom_histogram() +
+  geom_vline(xintercept = 1) +
+  facet_wrap(~key, scales = "free") +
+  theme_classic() +
+  theme(legend.position = "none")
+
+euc_dat %>%
+  mutate_at(vars(cov_vars), ~(./total_cover)*100 ) %>%
+  select(site_vars, cov_vars) %>%
+  group_by(Property) %>%
+  summarise_at(vars(cov_vars), ~mean(., na.rm = TRUE)) %>%
+  gather(cov_vars, key = "key", value = "value") %>%
+  ggplot(data = .,
+         mapping = aes(y = value, x = key)) +
+  geom_point() +
+  geom_hline(yintercept = 1) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90))
 
 
 
+### analysis data
+euc_ana <- euc_dat
+
+### create new analysis variables
+
+# (1) sum-up the three seedling size classes
+
+euc_ana$seedlings_all <- 
+  euc_ana %>%
+  select(seed_vars) %>%
+  rowSums()
 
 
+# (2) sum-up the'bare ground' type variables:
+# BareGround_cover
+# MossLichen_cover
+# Rock_cover
 
+euc_ana$bare_all <- 
+  euc_ana %>%
+  select(BareGround_cover, MossLichen_cover, Rock_cover) %>%
+  rowSums()
+
+
+# (3) create an exotic annual plant cover variable
+euc_ana$annual_plant_all <- 
+  euc_ana %>%
+  select(contains("ExoticAnnual")) %>%
+  rowSums()
+
+
+# (4) create perennial grass/graminoid variable
+euc_ana$perennial_grass <- 
+  euc_ana %>%
+  select(contains("PerennialGr")) %>%
+  rowSums()
+
+
+# (5) create perennial native grass/graminoid variable
+euc_ana$native_perennial_grass <- 
+  euc_ana %>%
+  select(contains("NativePerennialGr")) %>%
+  rowSums()
+
+
+# (6) create a perennial herb cover variable
+euc_ana$perennial_herb <- 
+  euc_ana %>%
+  select(contains("PerennialHerb")) %>%
+  rowSums()
+
+
+# (7) create a shrub cover variable
+euc_ana$shrub <- 
+  euc_ana %>%
+  select(contains("Shrub")) %>%
+  rowSums()
+
+
+# check proportion of exotic annual plants of different groups
+euc_ana %>%
+  group_by(Property, Season) %>%
+  mutate()
 
 
