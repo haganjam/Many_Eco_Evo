@@ -199,6 +199,44 @@ euc_dat %>%
   } 
   )
 
+# check proportion of different cover variables
+euc_dat$total_cover <- 
+  euc_dat %>%
+  select(cov_vars) %>%
+  rowSums()
+
+euc_dat %>%
+  mutate_at(vars(cov_vars), ~(./total_cover)*100 ) %>%
+  select(site_vars, cov_vars) %>%
+  group_by(Property) %>%
+  summarise_at(vars(cov_vars), ~mean(., na.rm = TRUE)) %>%
+  gather(cov_vars, key = "key", value = "value") %>%
+  ggplot(data = .,
+         mapping = aes(x = value, fill = key)) +
+  geom_histogram() +
+  geom_vline(xintercept = 1) +
+  facet_wrap(~key, scales = "free") +
+  theme_classic() +
+  theme(legend.position = "none")
+
+euc_dat %>%
+  mutate_at(vars(cov_vars), ~(./total_cover)*100 ) %>%
+  select(cov_vars) %>%
+  summary()
+
+euc_dat %>%
+  mutate_at(vars(cov_vars), ~(./total_cover)*100 ) %>%
+  select(site_vars, cov_vars) %>%
+  group_by(Property) %>%
+  summarise_at(vars(cov_vars), ~mean(., na.rm = TRUE)) %>%
+  gather(cov_vars, key = "key", value = "value") %>%
+  ggplot(data = .,
+         mapping = aes(y = value, x = key)) +
+  geom_point() +
+  geom_hline(yintercept = 1) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90))
+
 
 ### seedling variables
 seed_vars
@@ -224,41 +262,6 @@ euc_dat %>%
     select(x, contains("sdl")) %>% pairs()
   } 
   )
-
-
-# check proportion of different cover variables
-euc_dat$total_cover <- 
-  euc_dat %>%
-  select(cov_vars) %>%
-  rowSums()
-
-euc_dat %>%
-  mutate_at(vars(cov_vars), ~(./total_cover)*100 ) %>%
-  select(site_vars, cov_vars) %>%
-  group_by(Property) %>%
-  summarise_at(vars(cov_vars), ~mean(., na.rm = TRUE)) %>%
-  gather(cov_vars, key = "key", value = "value") %>%
-  ggplot(data = .,
-         mapping = aes(x = value, fill = key)) +
-  geom_histogram() +
-  geom_vline(xintercept = 1) +
-  facet_wrap(~key, scales = "free") +
-  theme_classic() +
-  theme(legend.position = "none")
-
-euc_dat %>%
-  mutate_at(vars(cov_vars), ~(./total_cover)*100 ) %>%
-  select(site_vars, cov_vars) %>%
-  group_by(Property) %>%
-  summarise_at(vars(cov_vars), ~mean(., na.rm = TRUE)) %>%
-  gather(cov_vars, key = "key", value = "value") %>%
-  ggplot(data = .,
-         mapping = aes(y = value, x = key)) +
-  geom_point() +
-  geom_hline(yintercept = 1) +
-  theme_classic() +
-  theme(axis.text.x = element_text(angle = 90))
-
 
 
 ### analysis data
@@ -305,6 +308,10 @@ euc_ana$native_perennial_grass <-
   select(contains("NativePerennialGr")) %>%
   rowSums()
 
+# proportion of graminoids is very low
+euc_ana$NativePerennialGraminoid_cover %>%
+  summary()
+
 
 # (6) create a perennial herb cover variable
 euc_ana$perennial_herb <- 
@@ -319,10 +326,89 @@ euc_ana$shrub <-
   select(contains("Shrub")) %>%
   rowSums()
 
+# proportion of exotic shrubs is very low
+euc_ana$ExoticShrub_cover %>%
+  max()
 
-# check proportion of exotic annual plants of different groups
+
+# (8) create an exotic grass cover variable
+euc_ana$exotic_grass <- 
+  euc_ana %>%
+  select(intersect(contains("Exotic"), contains("Grass"))) %>%
+  rowSums()
+  
+
+### explore the grass variables
+
+# What grass variables are there?
 euc_ana %>%
-  group_by(Property, Season) %>%
-  mutate()
+  select(contains("grass")) %>%
+  names()
+
+# explore the relationship between grass cover variables
+euc_ana %>%
+  select(contains("grass")) %>%
+  pairs()
+
+euc_ana %>%
+  select(contains("grass")) %>%
+  cor() %>%
+  corrplot(method = "number")
+
+# these variables are uncorrelated and capture all grass proportion (see below)
+# native_perennial_grass
+# ExoticAnnualGrass_cover
+# ExoticPerennialGrass_cover
+
+# see what proportion of total grass cover they occupy:
+tot_grass <- 
+  euc_ana %>%
+  select(cov_vars) %>%
+  select(contains("gra")) %>%
+  rowSums()
+
+grass_3 <- 
+  euc_ana %>%
+  select(native_perennial_grass, ExoticAnnualGrass_cover, ExoticPerennialGrass_cover) %>%
+  rowSums()
+
+((grass_3/tot_grass)*100) %>%
+  summary()
+
+# NAs are cases where grass cover overall is zero
+
+
+### explore the herb variables
+euc_ana %>%
+  select(contains("herb")) %>%
+  pairs()
+
+# generally more exotic perennial herbs
+euc_ana %>%
+  select(contains("PerennialHerb")) %>%
+  summary()
+
+# boundary correlations
+euc_ana %>%
+  select(contains("PerennialHerb")) %>%
+  filter_all(all_vars(.>0)) %>%
+  pairs()
+
+euc_ana %>%
+  select(contains("herb")) %>%
+  names()
+
+# use two herb variables:
+# ExoticAnnualHerb_cover
+# perennial_herb
+
+
+
+
+
+
+
+
+
 
 
