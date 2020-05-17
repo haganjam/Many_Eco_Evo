@@ -338,6 +338,26 @@ euc_ana$exotic_grass <-
   rowSums()
   
 
+# (9) create a property-season combination variables
+
+
+
+### examine the seedlings variables because some plots do not have seedlings
+
+# create a list of property season combinations were recruitment was 
+euc_recruit <- 
+  euc_ana %>%
+  mutate(seedling_y_n = if_else(seedlings_all > 0, 1, 0)) %>%
+  group_by(Property, Season) %>%
+  summarise(seedling_y_n = sum(seedling_y_n),
+            n = n()) %>%
+  filter(seedling_y_n > 0) %>%
+  ungroup() %>%
+  mutate(Property_season = paste(Property, Season, sep = "_")) %>%
+  pull(Property_season)
+
+
+
 ### explore the grass variables
 
 # What grass variables are there?
@@ -403,9 +423,49 @@ euc_ana %>%
 # perennial_herb
 
 
+### what subset of cover variables capture most important information (IMO)?
+
+euc_ana %>%
+  names()
+
+# bare_all
+# shrub
+# ExoticAnnualHerb_cover
+# perennial_herb
+# Litter_cover
+# native_perennial_grass
+# ExoticAnnualGrass_cover
+# ExoticPerennialGrass_cover
+# perennial_grass
+
+cov_sub <- c("bare_all", "shrub", "ExoticAnnualHerb_cover", "perennial_herb",
+             "Litter_cover", "native_perennial_grass", "ExoticAnnualGrass_cover", 
+             "ExoticPerennialGrass_cover", "perennial_grass")
+
+# these variables account for almost all cover in almost all data points
+((euc_ana %>%
+  select(cov_sub) %>%
+  rowSums() )/(euc_ana$total_cover)) %>%
+  summary()
+
+# how are these cover variables correlated?
+euc_ana %>%
+  select(cov_sub) %>%
+  pairs()
+
+euc_ana %>%
+  select(cov_sub) %>%
+  cor() %>%
+  corrplot(method = "number")
 
 
-
+### explore how grass affects seedlings
+ggplot(data = euc_ana,
+       mapping = aes(x = ExoticAnnualGrass_cover, y = seedlings_all, colour = Season)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(~Property, scales = "free") +
+  theme_classic()
 
 
 
