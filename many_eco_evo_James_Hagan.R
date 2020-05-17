@@ -339,22 +339,31 @@ euc_ana$exotic_grass <-
   
 
 # (9) create a property-season combination variables
+euc_ana <- 
+  euc_ana %>%
+  mutate(Property_season = paste(Property, Season, sep = "_"))
+
+
+# (10) create a seedling_y_n variables
+euc_ana <- 
+  euc_ana %>%
+  mutate(seedling_y_n = if_else(seedlings_all > 0, 1, 0))
 
 
 
 ### examine the seedlings variables because some plots do not have seedlings
 
 # create a list of property season combinations were recruitment was 
-euc_recruit <- 
+recruit_sites <- 
   euc_ana %>%
-  mutate(seedling_y_n = if_else(seedlings_all > 0, 1, 0)) %>%
-  group_by(Property, Season) %>%
+  group_by(Property_season) %>%
   summarise(seedling_y_n = sum(seedling_y_n),
             n = n()) %>%
-  filter(seedling_y_n > 0) %>%
   ungroup() %>%
-  mutate(Property_season = paste(Property, Season, sep = "_")) %>%
+  filter(seedling_y_n > 0) %>%
   pull(Property_season)
+
+
 
 
 
