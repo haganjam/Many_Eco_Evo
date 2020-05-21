@@ -280,16 +280,15 @@ euc_ana$seedlings_all <-
 # (2) sum-up the'bare ground' type variables:
 # BareGround_cover
 # MossLichen_cover
-# Rock_cover
 
 euc_ana$bare_all <- 
   euc_ana %>%
-  select(BareGround_cover, MossLichen_cover, Rock_cover) %>%
+  select(BareGround_cover, MossLichen_cover) %>%
   rowSums()
 
 
-# (3) create an exotic annual plant cover variable
-euc_ana$annual_plant_all <- 
+# (3) create an exotic annual plant cover variable (exotic grass and herbs)
+euc_ana$exotic_annual <- 
   euc_ana %>%
   select(contains("ExoticAnnual")) %>%
   rowSums()
@@ -300,6 +299,8 @@ euc_ana$perennial_grass <-
   euc_ana %>%
   select(contains("PerennialGr")) %>%
   rowSums()
+
+# very few perennial graminoids
 
 
 # (5) create perennial native grass/graminoid variable
@@ -344,10 +345,16 @@ euc_ana <-
   mutate(Property_season = paste(Property, Season, sep = "_"))
 
 
-# (10) create a seedling_y_n variables
+# (10) create a seedling_y_n variables for all seedlings
 euc_ana <- 
   euc_ana %>%
   mutate(seedling_y_n = if_else(seedlings_all > 0, 1, 0))
+
+
+# (11) create a young seedling variable
+euc_ana <- 
+  euc_ana %>%
+  mutate(young_seedling_y_n = if_else(euc_sdlgs0_50cm > 0, 1, 0))
 
 
 
@@ -362,9 +369,6 @@ recruit_sites <-
   ungroup() %>%
   filter(seedling_y_n > 0) %>%
   pull(Property_season)
-
-
-
 
 
 ### explore the grass variables
@@ -468,13 +472,93 @@ euc_ana %>%
   corrplot(method = "number")
 
 
+# when do Eucalypt seedlings recruit?
+euc_ana %>%
+  group_by(Property, Season) %>%
+  summarise(young_seedling_y_n = sum(young_seedling_y_n, na.rm = TRUE)/n(),
+            seedling_y_n = sum(seedling_y_n, na.rm = TRUE)/n()) %>%
+  View()
+
+
+
 ### explore how grass affects seedlings
+euc_ana %>%
+  names()
+
 ggplot(data = euc_ana,
-       mapping = aes(x = ExoticAnnualGrass_cover, y = seedlings_all, colour = Season)) +
+       mapping = aes(x = exotic_annual, y = seedlings_all, colour = Season)) +
   geom_point() +
   geom_smooth(method = "lm", se = FALSE) +
   facet_wrap(~Property, scales = "free") +
   theme_classic()
+
+euc_ana %>%
+  group_by(Property) %>%
+  mutate(PET = mean(PET, na.rm = TRUE)) %>%
+  ggplot(data = .,
+         mapping = aes(x = perennial_grass, y = seedling_y_n, colour = Season)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(~as.character(PET), scales = "free") +
+  theme_classic()
+
+
+# within each property season combination, compare characteristics of plots with and without seedlings
+euc_ana %>%
+  group_by(Property) %>%
+  mutate(PET = mean(PET, na.rm = TRUE)) %>%
+  ungroup() %>%
+  gather(cov_sub, key = "var", value = "cover") %>%
+  group_by(var, PET, Season, young_seedling_y_n) %>%
+  summarise(mean_cover = mean(cover, na.rm = TRUE)) %>%
+  ungroup() %>%
+  spread(young_seedling_y_n, mean_cover) %>%
+  mutate(diff = `1`-`0`) %>%
+  filter(grepl("rass", var)) %>%
+  ggplot(data = .,
+         mapping = aes(x = PET, y = diff)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  geom_hline(yintercept = 0) +
+  facet_wrap(~var, scales = "free")
+
+
+euc_ana %>%
+  gather(cov_sub, euc_vars, PET, SRad_Jul, soil_vars, MrVBF,
+         key = "cover_var", value = "cover") %>%
+  group_by(cover_var, Property, Season, young_seedling_y_n) %>%
+  summarise(mean_cover = mean(cover, na.rm = TRUE)) %>%
+  ungroup() %>%
+  spread(key = "young_seedling_y_n", value = "mean_cover") %>%
+  mutate(cover_diff = `1`-`0`) %>%
+  group_by(cover_var, Property) %>%
+  summarise(mean_cover_diff = mean(cover_diff, na.rm = TRUE)) %>%
+  ggplot(data = .,
+         mapping = aes(x = Property, y = mean_cover_diff)) +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  facet_wrap(~cover_var, scales = "free") +
+  theme_classic()
+
+# which variables?
+names(euc_ana)
+
+# random effects:
+
+# property
+# season
+
+# fixed effects:
+
+# distance_to_Eucalypt_canopy_m
+# PET
+# perennial_grass
+# bare_all
+# ExoticAnnualGrass_cover
+# ExoticAnnualHerb_cover
+# perennial_herb
+
+# how much total cover do these variables account for?
 
 
 
