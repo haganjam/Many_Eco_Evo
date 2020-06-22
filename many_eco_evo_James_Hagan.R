@@ -1,6 +1,16 @@
 
 # Title: ManyEcoEvo analysis (James G. Hagan)
 
+
+# to do:
+
+# check weird outlier with canopy cover and distance to eucalypt
+
+# choose the variables
+
+# perform the paired analysis and then run some models
+
+
 # load relevant libraries
 library(readr)
 library(dplyr)
@@ -12,6 +22,8 @@ library(RColorBrewer)
 library(viridis)
 library(here)
 library(corrplot)
+library(lme4)
+library(piecewiseSEM)
 
 # load the data
 euc_dat <- readr::read_delim("data/Euc_data.csv", delim = ",")
@@ -367,7 +379,7 @@ euc_ana$total_cover <-
 
 ### examine the seedlings variables because some plots do not have seedlings
 
-# create a list of property season combinations were recruitment was 
+# create a list of property season combinations where recruitment occurred
 recruit_sites <- 
   euc_ana %>%
   group_by(Property_season) %>%
@@ -449,10 +461,6 @@ euc_ana$non_wood_plant <-
 
 
 
-
-
-
-
 ### which variables are the most important?
 
 # random effects:
@@ -475,6 +483,7 @@ euc_ana$non_wood_plant <-
 # total_perennial_grass
 # ExoticAnnualGrass_cover
 # Litter_cover
+# total_cover
 
 ((euc_ana %>%
   select(bare_all, non_wood_plant, total_perennial_grass,
@@ -485,14 +494,118 @@ euc_ana$non_wood_plant <-
 # important summary statistics to report
 
 
+# explore these variables for distribution etc. within each site
+
+vars <- 
+  c("distance_to_Eucalypt_canopy_m",
+    "PET",
+    "bare_all",
+    "non_wood_plant",
+    "total_perennial_grass",
+    "native_perennial_grass",
+    "ExoticAnnualGrass_cover",
+    "Litter_cover",
+    "total_cover",
+    seed_vars)
+
+ggplot(data = euc_ana %>%
+         gather(vars, key = "variable", value = "val"),
+       mapping = aes(x = val)) +
+  geom_histogram() +
+  facet_wrap(~variable, scales = "free")
+
+vars %>%
+  length()
+
+euc_ana %>%
+  select(vars[c(3, 4, 5, 6, 7, 8)]) %>%
+  pairs()
+
+names(euc_ana)
+
+ggplot(data = euc_ana, 
+       mapping = aes(x = ExoticAnnualGrass_cover,
+                     y = euc_sdlgs0_50cm,
+                     colour = Property)) +
+  geom_jitter(width = 0.05) +
+  facet_wrap(~Season, scales = "free") +
+  theme(legend.position = "none")
+
+
+# get site-year combinations where seedlings were observed
+p_sites <- 
+  euc_ana %>%
+  group_by(Property_season) %>%
+  summarise(seedlings = sum(seedlings_all)) %>%
+  ungroup() %>%
+  filter(seedlings > 0) %>%
+  pull(Property_season)
+
+ggplot(data = euc_ana %>%
+         filter(Property_season %in% p_sites), 
+       mapping = aes(x = log(1+distance_to_Eucalypt_canopy_m),
+                     y = young_seedling_y_n,
+                     colour = PET)) +
+  geom_jitter(width = 0.05) +
+  geom_smooth(method = "lm") +
+  facet_wrap(~Property_season, scales = "free") +
+  theme(legend.position = "none")
+
+
 ### fit a mean-level model (i.e. each property-season combination)
 
+mean_dat <- 
+  euc_ana %>%
+  group_by(Property) %>%
+  summarise_at(vars(c("distance_to_Eucalypt_canopy_m",
+                      "PET",
+                      "bare_all",
+                      "non_wood_plant",
+                      "total_perennial_grass",
+                      "ExoticAnnualGrass_cover",
+                      "Litter_cover",
+                      seed_vars)),
+               ~ mean(., na.rm = TRUE)) %>%
+  ungroup()
 
 
+### use a paired test at each site-time combination
 
+vars <- 
+  c("distance_to_Eucalypt_canopy_m",
+  "PET",
+  "bare_all",
+  "non_wood_plant",
+  "total_perennial_grass",
+  "native_perennial_grass",
+  "ExoticAnnualGrass_cover",
+  "Litter_cover",
+  "total_cover",
+  seed_vars[-5])
 
+pair_dat <- 
+  euc_ana %>%
+  group_by(Property_season, seedling_y_n) %>%
+  summarise_at(vars(vars),
+               ~ mean(., na.rm = TRUE)) %>%
+  ungroup() %>%
+  group_by(Property_season) %>%
+  mutate(n = n()) %>%
+  filter(n > 1) %>%
+  summarise_at(vars(vars),
+               ~ diff(.) ) %>%
+  ungroup()
 
+ggplot(data = pair_dat %>%
+         gather(vars, key = "variable", value = "val"),
+       mapping = aes(x = val) ) +
+  geom_histogram() +
+  geom_vline(xintercept = 0) +
+  facet_wrap(~ variable, scales = "free") +
+  theme_classic()
 
-
-
+pair_dat %>%
+  gather(vars, key = "variable", value = "val") %>%
+  group_by(variable) %>%
+  summarise(val_mean = mean(val))
 
