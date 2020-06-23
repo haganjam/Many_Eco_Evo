@@ -24,6 +24,20 @@ library(here)
 library(corrplot)
 library(lme4)
 library(piecewiseSEM)
+library(nlme)
+
+# load the overdispersion function (GLMM FAQ)
+
+overdisp_fun <- function(model) {
+  rdf <- df.residual(model)
+  rp <- residuals(model,type="pearson")
+  Pearson.chisq <- sum(rp^2)
+  prat <- Pearson.chisq/rdf
+  pval <- pchisq(Pearson.chisq, df=rdf, lower.tail=FALSE)
+  c(chisq=Pearson.chisq,ratio=prat,rdf=rdf,p=pval)
+}
+
+
 
 # load the data
 euc_dat <- readr::read_delim("data/Euc_data.csv", delim = ",")
@@ -501,6 +515,54 @@ euc_ana$non_wood_plant <-
 
 # important summary statistics to report
 
+# how many plots in total?
+nrow(euc_ana)
+
+# how many plots in total have any seedlings?
+euc_ana %>%
+  filter(seedling_y_n > 0) %>%
+  nrow()
+
+# 25% of plots have any recruitment
+
+euc_ana %>%
+  filter(seedling_y_n > 0) %>%
+  nrow()
+
+euc_ana %>%
+  filter(Euc_canopy_cover > 0) %>%
+  nrow()
+
+ggplot(data = euc_ana %>%
+         filter(seedling_y_n > 0),
+       mapping = aes(x = (distance_to_Eucalypt_canopy_m) )) +
+  geom_histogram()
+
+euc_ana %>%
+  filter(seedling_y_n > 0, distance_to_Eucalypt_canopy_m < 10) %>%
+  nrow()
+
+# 72 of 89 (i.e. 81%) are within 10 m of a Eucalypt canopy
+
+euc_ana %>%
+  filter(seedling_y_n > 0, distance_to_Eucalypt_canopy_m < 20) %>%
+  nrow()
+
+# 80 of 89 (i.e. 90%) are within 20 m of a Eucalypt canopy
+
+# how are grass cover and distance to Eucalypt canopy cover related?
+ggplot(data = euc_ana,
+       mapping = aes(x = (distance_to_Eucalypt_canopy_m), y = total_perennial_grass,
+                     colour = Property)) +
+  geom_point()
+
+# what is the relationship between grass and seedlings within a 20 m eucalypt radius?
+ggplot(data = euc_ana %>%
+         filter(distance_to_Eucalypt_canopy_m < 20),
+       mapping = aes(x = log10(total_perennial_grass), y = seedling_y_n,
+                     colour = Season)) +
+  geom_point() +
+  facet_wrap(~Property, scales = "free")
 
 # explore these variables for distribution etc. within each site
 
@@ -523,118 +585,201 @@ ggplot(data = euc_ana %>%
   facet_wrap(~variable, scales = "free")
 
 
-# some variables require some transformations to improve their properties
-# distance_to_Eucalypt_canopy_m
-# bare_all",
-# non_wood_plant",
-# total_perennial_grass",
-# native_perennial_grass",
-# ExoticAnnualGrass_cover
-
-ggplot(data = euc_ana %>%
-         mutate_at(vars(c("distance_to_Eucalypt_canopy_m", "bare_all",
-                             "non_wood_plant", "total_perennial_grass",
-                             "native_perennial_grass")), 
-                      ~ log10(1 + .)) %>%
-         gather(vars, key = "variable", value = "val"),
-       mapping = aes(x = val)) +
-  geom_histogram() +
-  facet_wrap(~variable, scales = "free")
-
-
-
-vars %>%
-  length()
-
-euc_ana %>%
-  select(vars[c(3, 4, 5, 6, 7, 8)]) %>%
-  pairs()
-
-names(euc_ana)
-
-ggplot(data = euc_ana, 
-       mapping = aes(x = ExoticAnnualGrass_cover,
-                     y = euc_sdlgs0_50cm,
-                     colour = Property)) +
-  geom_jitter(width = 0.05) +
-  facet_wrap(~Season, scales = "free") +
-  theme(legend.position = "none")
-
-
 # get site-year combinations where seedlings were observed
-p_sites <- 
-  euc_ana %>%
-  group_by(Property_season) %>%
-  summarise(seedlings = sum(seedlings_all)) %>%
-  ungroup() %>%
-  filter(seedlings > 0) %>%
-  pull(Property_season)
-
-ggplot(data = euc_ana %>%
-         filter(Property_season %in% p_sites), 
-       mapping = aes(x = log(1+distance_to_Eucalypt_canopy_m),
-                     y = young_seedling_y_n,
-                     colour = PET)) +
-  geom_jitter(width = 0.05) +
-  geom_smooth(method = "lm") +
-  facet_wrap(~Property_season, scales = "free") +
-  theme(legend.position = "none")
+recruit_sites
 
 
-### fit a mean-level model (i.e. each property-season combination)
+### do a paired analysis at the site-season scale
 
-mean_dat <- 
-  euc_ana %>%
-  group_by(Property) %>%
-  summarise_at(vars(c("distance_to_Eucalypt_canopy_m",
-                      "PET",
-                      "bare_all",
-                      "non_wood_plant",
-                      "total_perennial_grass",
-                      "ExoticAnnualGrass_cover",
-                      "Litter_cover",
-                      seed_vars)),
-               ~ mean(., na.rm = TRUE)) %>%
-  ungroup()
-
-
-### use a paired test at each site-time combination
-
-vars <- 
-  c("distance_to_Eucalypt_canopy_m",
-  "PET",
-  "bare_all",
-  "non_wood_plant",
-  "total_perennial_grass",
-  "native_perennial_grass",
-  "ExoticAnnualGrass_cover",
-  "Litter_cover",
-  "total_cover",
-  seed_vars[-5])
+g_vars <- c("total_perennial_grass",
+            "ExoticAnnualGrass_cover",
+            "native_perennial_grass")
 
 pair_dat <- 
   euc_ana %>%
+  filter(Property_season %in% recruit_sites) %>%
   group_by(Property_season, seedling_y_n) %>%
-  summarise_at(vars(vars),
-               ~ mean(., na.rm = TRUE)) %>%
+  summarise_at(vars(g_vars),
+               list(m = ~ mean(., na.rm = TRUE),
+                    n = ~ n()) ) %>%
   ungroup() %>%
   group_by(Property_season) %>%
   mutate(n = n()) %>%
   filter(n > 1) %>%
-  summarise_at(vars(vars),
-               ~ diff(.) ) %>%
-  ungroup()
+  summarise_at(vars(paste(g_vars, c("m"), sep = "_")),
+               ~ diff(., na.rm = TRUE)) %>%
+  ungroup() %>%
+  gather(paste(g_vars, c("m"), sep = "_"),
+         key = "grass_variable", value = "cover")
 
-ggplot(data = pair_dat %>%
-         gather(vars, key = "variable", value = "val"),
-       mapping = aes(x = val) ) +
+euc_ana$Property_season %>%
+  unique() %>%
+  length()
+
+pair_dat$Property_season %>%
+  unique() %>%
+  length()
+
+# plot out these differences
+
+ggplot(data = pair_dat, 
+       mapping = aes(x = cover, fill = grass_variable)) +
   geom_histogram() +
   geom_vline(xintercept = 0) +
+  theme_classic()
+
+split(pair_dat, pair_dat$grass_variable) %>%
+  lapply(., function(x) { t.test(x = x$cover, alternative = c("two.sided"), mu = 0) })
+
+
+### fit a mean-level model (i.e. each property-season combination)
+
+fit_vars <- 
+  c("distance_to_Eucalypt_canopy_m",
+    "PET",
+    "bare_all",
+    "non_wood_plant",
+    "total_perennial_grass",
+    "ExoticAnnualGrass_cover",
+    "Litter_cover",
+    seed_vars)
+
+mean_dat <- 
+  euc_ana %>%
+  group_by(Property, Season) %>%
+  summarise_at(vars(fit_vars),
+               ~ mean(., na.rm = TRUE)) %>%
+  ungroup()
+
+mean_dat %>%
+  select(fit_vars[1:round((length(fit_vars)/2), 0)]) %>%
+  pairs()
+
+mean_dat %>%
+  select(fit_vars[1:round((length(fit_vars)/2), 0)]) %>%
+  cor(method = "spearman") %>%
+  corrplot(method = "number")
+
+mean_dat %>%
+  select(fit_vars[(round((length(fit_vars)/2), 0)+1):length(fit_vars)]) %>%
+  pairs()
+
+mean_dat %>%
+  select(fit_vars[(round((length(fit_vars)/2), 0)+1):length(fit_vars)]) %>%
+  cor(method = "spearman") %>%
+  corrplot(method = "number")
+
+# check the variable distributions
+
+mean_dat %>%
+  gather(fit_vars[1:10],
+         key = "variable", value = "value") %>%
+  ggplot(data = .,
+         mapping = aes(x = value)) +
+  geom_histogram() +
   facet_wrap(~ variable, scales = "free") +
   theme_classic()
 
-pair_dat %>%
-  gather(vars, key = "variable", value = "val") %>%
-  group_by(variable) %>%
-  summarise(val_mean = mean(val))
+# distance to Eucalypt canopy is a bit skewed
+# Exotic annual grass cover is also a bit skewed
+# total perennial grass is also a bit skewed
+
+# plot some of these relationships
+ggplot(data = mean_dat,
+       mapping = aes(x = PET, y = log(1+seedlings_all), colour = Season)) +
+  geom_point() +
+  geom_smooth(se = FALSE) +
+  theme_classic()
+
+ggplot(data = mean_dat,
+       mapping = aes(x = sqrt(distance_to_Eucalypt_canopy_m), y = log(1+seedlings_all), 
+                     colour = PET)) +
+  geom_point() +
+  geom_smooth(se = FALSE, method = "lm") +
+  facet_wrap(~ Season) +
+  theme_classic()
+
+names(mean_dat)
+
+# fit a model without random effects using restricted maximum likelihood (function gls)
+lm_mean1 <- nlme::gls(log(1+seedlings_all) ~ 
+                   sqrt(distance_to_Eucalypt_canopy_m) + 
+                   sqrt(ExoticAnnualGrass_cover) +
+                   sqrt(total_perennial_grass) +
+                   Litter_cover +
+                   bare_all +
+                   PET +
+                   Season,
+                   data = mean_dat, method = "REML")
+AIC(lm_mean1)
+
+# fit a model with the same fixed effects and a random effect using restricted maximum likelihood (function lmer)
+lm_mean2 <- lme4::lmer(log(1+seedlings_all) ~ 
+                    sqrt(distance_to_Eucalypt_canopy_m) + 
+                    sqrt(ExoticAnnualGrass_cover) +
+                    sqrt(total_perennial_grass) +
+                    Litter_cover +
+                    bare_all +
+                    PET +
+                    Season +
+                    (1|Property),
+                  data = mean_dat, REML = TRUE)
+
+AIC(lm_mean2)
+
+# we do not accept the model with the random effect
+
+# check the model assumptions
+plot(lm_mean1)
+residuals(lm_mean1) %>% 
+  hist()
+
+car::vif(lm_mean1)
+
+rsquared(lm_mean1)
+
+# check model coefficients
+summary(lm_mean1)
+
+
+### fit a model to the full dataset
+
+fit_vars2 <- 
+  c("distance_to_Eucalypt_canopy_m",
+    "PET",
+    "bare_all",
+    "non_wood_plant",
+    "total_perennial_grass",
+    "ExoticAnnualGrass_cover",
+    "Litter_cover")
+
+scale_this <- function(x){
+  (x - mean(x, na.rm = TRUE)) / sd(x, na.rm=TRUE)
+}
+
+full_dat <- 
+  euc_ana %>%
+  mutate_at(vars(fit_vars2),
+               ~ scale_this(.))
+  
+lm_full1 <- 
+  lme4::glmer(seedling_y_n ~ 
+             (distance_to_Eucalypt_canopy_m) + 
+             (ExoticAnnualGrass_cover) +
+             (total_perennial_grass) +
+             Litter_cover +
+             PET +
+             Season +
+             (1|Property),
+           data = full_dat, family = binomial)
+
+
+
+
+
+
+
+
+
+
 
