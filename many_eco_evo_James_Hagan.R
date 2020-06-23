@@ -153,6 +153,10 @@ euc_dat %>%
 
 # strange value where canopy cover is high despite nearest Eucalyptus 38 m away?
 
+# this doesn't seem possible so I will remove this data point
+
+# survey 239
+
 
 ### check the precipitation variables
 prec_vars
@@ -271,7 +275,9 @@ euc_dat %>%
 
 ### analysis data
 
-euc_ana <- euc_dat
+euc_ana <- 
+  euc_dat %>%
+  filter(SurveyID != 239) # removes data point with strange canopy cover value
 
 
 ### create new analysis variables
@@ -389,6 +395,8 @@ recruit_sites <-
   filter(seedling_y_n > 0) %>%
   pull(Property_season)
 
+recruit_sites
+
 
 ### which cover variables are important?
 
@@ -447,11 +455,9 @@ seed_vars <-
   c(seed_vars, "seedlings_all", "seedling_y_n", "young_seedling_y_n")
 
 # reduce the variables in euc_ana
-
 euc_ana <- 
   euc_ana %>%
   select(site_vars, soil_vars, prec_vars, euc_vars, cov_sub, seed_vars)
-
 
 # create a total non-woody plant cover variable (excluding exotic annual grass and total perennial grass)
 euc_ana$non_wood_plant <- 
@@ -467,6 +473,8 @@ euc_ana$non_wood_plant <-
 
 # property
 # season
+
+# or just property because they were measured on different plots over time
 
 
 # fixed effects:
@@ -513,6 +521,27 @@ ggplot(data = euc_ana %>%
        mapping = aes(x = val)) +
   geom_histogram() +
   facet_wrap(~variable, scales = "free")
+
+
+# some variables require some transformations to improve their properties
+# distance_to_Eucalypt_canopy_m
+# bare_all",
+# non_wood_plant",
+# total_perennial_grass",
+# native_perennial_grass",
+# ExoticAnnualGrass_cover
+
+ggplot(data = euc_ana %>%
+         mutate_at(vars(c("distance_to_Eucalypt_canopy_m", "bare_all",
+                             "non_wood_plant", "total_perennial_grass",
+                             "native_perennial_grass")), 
+                      ~ log10(1 + .)) %>%
+         gather(vars, key = "variable", value = "val"),
+       mapping = aes(x = val)) +
+  geom_histogram() +
+  facet_wrap(~variable, scales = "free")
+
+
 
 vars %>%
   length()
