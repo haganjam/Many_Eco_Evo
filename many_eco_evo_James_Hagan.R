@@ -589,11 +589,12 @@ ggplot(data = euc_ana %>%
   facet_wrap(~variable, scales = "free")
 
 
-# get site-year combinations where seedlings were observed
-recruit_sites
-
+### Analysis 1
 
 ### do a paired analysis at the site-season scale
+
+# get site-year combinations where seedlings were observed
+recruit_sites
 
 g_vars <- c("total_perennial_grass",
             "ExoticAnnualGrass_cover",
@@ -602,12 +603,12 @@ g_vars <- c("total_perennial_grass",
 pair_dat <- 
   euc_ana %>%
   filter(Property_season %in% recruit_sites) %>%
-  group_by(Property_season, seedling_y_n) %>%
+  group_by(Property, Season, Property_season, seedling_y_n) %>%
   summarise_at(vars(g_vars),
                list(m = ~ mean(., na.rm = TRUE),
                     n = ~ n()) ) %>%
   ungroup() %>%
-  group_by(Property_season) %>%
+  group_by(Property, Season, Property_season) %>%
   mutate(n = n()) %>%
   filter(n > 1) %>%
   summarise_at(vars(paste(g_vars, c("m"), sep = "_")),
@@ -630,10 +631,54 @@ ggplot(data = pair_dat,
        mapping = aes(x = cover, fill = grass_variable)) +
   geom_histogram() +
   geom_vline(xintercept = 0) +
+  facet_wrap(~Season, scales = "free") +
   theme_classic()
 
 split(pair_dat, pair_dat$grass_variable) %>%
   lapply(., function(x) { t.test(x = x$cover, alternative = c("two.sided"), mu = 0) })
+
+
+# get moderator variables
+
+mod_vars <- 
+  c("distance_to_Eucalypt_canopy_m",
+    "PET",
+    "bare_all",
+    "non_wood_plant",
+    "MrVBF",
+    "K_perc",
+    "Th_ppm",
+    "U_ppm",
+    "shrub",
+    "Litter_cover")
+
+mod_dat <- 
+  euc_ana %>%
+  group_by(Property, Season, Property_season) %>%
+  summarise_at(vars(mod_vars),
+               ~ mean(., na.rm = TRUE)) %>%
+  ungroup()
+
+
+# join the mod_dat data to the paired data
+pair_dat_mod <- 
+  full_join(pair_dat, mod_dat, by = c("Property", "Season", "Property_season")) %>%
+  split(., .$grass_variable)
+
+pair_dat_mod %>% names()
+
+pair_dat_mod[[3]] %>%
+  gather(mod_vars,
+         key = "mod", value = "val") %>%
+  ggplot(data = .,
+         mapping = aes(x = val, y = cover)) +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  geom_smooth(se = FALSE, method = "lm") +
+  facet_wrap(~ mod, scales = "free") +
+  theme_classic()
+
+
 
 
 ### fit a mean-level model (i.e. each property-season combination)
@@ -643,14 +688,21 @@ fit_vars <-
     "PET",
     "bare_all",
     "non_wood_plant",
-    "total_perennial_grass",
-    "ExoticAnnualGrass_cover",
+    "MrVBF",
+    "K_perc",
+    "Th_ppm",
+    "U_ppm",
+    "shrub",
     "Litter_cover",
+    "total_perennial_grass",
+    "native_perennial_grass",
+    "ExoticAnnualGrass_cover",
+    "exotic_annual",
     seed_vars)
 
 mean_dat <- 
   euc_ana %>%
-  group_by(Property, Season) %>%
+  group_by(Property) %>%
   summarise_at(vars(fit_vars),
                ~ mean(., na.rm = TRUE)) %>%
   ungroup()
@@ -673,8 +725,8 @@ mean_dat %>%
   cor(method = "spearman") %>%
   corrplot(method = "number")
 
-# check the variable distributions
 
+# check the variable distributions
 mean_dat %>%
   gather(fit_vars[1:10],
          key = "variable", value = "value") %>%
@@ -684,77 +736,66 @@ mean_dat %>%
   facet_wrap(~ variable, scales = "free") +
   theme_classic()
 
-# distance to Eucalypt canopy is a bit skewed
-# Exotic annual grass cover is also a bit skewed
-# total perennial grass is also a bit skewed
-
-# plot some of these relationships
-ggplot(data = mean_dat,
-       mapping = aes(x = PET, y = log(1+seedlings_all), colour = Season)) +
-  geom_point() +
-  geom_smooth(se = FALSE) +
+mean_dat %>%
+  gather(fit_vars[11:13],
+         key = "variable", value = "value") %>%
+  ggplot(data = .,
+         mapping = aes(x = value)) +
+  geom_histogram() +
+  facet_wrap(~ variable, scales = "free") +
   theme_classic()
 
-ggplot(data = mean_dat,
-       mapping = aes(x = sqrt(distance_to_Eucalypt_canopy_m), y = log(1+seedlings_all), 
-                     colour = PET)) +
+mean_dat %>%
+  gather(fit_vars[15:20],
+         key = "variable", value = "value") %>%
+  ggplot(data = .,
+         mapping = aes(x = log10(1 + value) )) +
+  geom_histogram() +
+  facet_wrap(~ variable, scales = "free") +
+  theme_classic()
+
+mean_dat$seedlings_all %>%
+  summary()
+
+
+# plot some of these relationships
+mean_dat %>%
+  gather(fit_vars[ !(fit_vars %in% seed_vars) ],
+         key = "mod", value = "val") %>%
+  ggplot(data = .,
+       mapping = aes(x = val, y = log10(1+seedlings_all))) +
   geom_point() +
   geom_smooth(se = FALSE, method = "lm") +
-  facet_wrap(~ Season) +
+  facet_wrap(~mod, scales = "free") +
   theme_classic()
 
 names(mean_dat)
 
 # fit a model without random effects using restricted maximum likelihood (function gls)
-lm_mean1 <- nlme::gls(log(1+seedlings_all) ~ 
-                   sqrt(distance_to_Eucalypt_canopy_m) + 
-                   sqrt(ExoticAnnualGrass_cover) +
-                   sqrt(total_perennial_grass) +
-                   Litter_cover +
-                   bare_all +
-                   PET +
-                   Season,
-                   data = mean_dat, method = "REML")
-AIC(lm_mean1)
+lm_mean1 <- lm(log10(1+seedlings_all) ~ 
+                   PET,
+                   data = mean_dat)
 
-# fit a model with the same fixed effects and a random effect using restricted maximum likelihood (function lmer)
-lm_mean2 <- lme4::lmer(log(1+seedlings_all) ~ 
-                    sqrt(distance_to_Eucalypt_canopy_m) + 
-                    sqrt(ExoticAnnualGrass_cover) +
-                    sqrt(total_perennial_grass) +
-                    Litter_cover +
-                    bare_all +
-                    PET +
-                    Season +
-                    (1|Property),
-                  data = mean_dat, REML = TRUE)
-
-AIC(lm_mean2)
-
-# we do not accept the model with the random effect
 
 # check the model assumptions
-plot(lm_mean1)
+plot(lm_mean1, 1)
+
 residuals(lm_mean1) %>% 
   hist()
 
+# check for variance inflation
 car::vif(lm_mean1)
-
-rsquared(lm_mean1)
 
 # check model coefficients
 summary(lm_mean1)
 
 # plot the predictions
-
-plot(log(1+mean_dat$seedlings_all), predict(lm_mean1))
-
 ggplot(data = mean_dat %>%
          mutate(pred = predict(lm_mean1)),
-       mapping = aes(x = sqrt(distance_to_Eucalypt_canopy_m), 
-                     y = log(1+mean_dat$seedlings_all))) +
+       mapping = aes(x = PET, 
+                     y = log10(1+mean_dat$seedlings_all))) +
   geom_point() +
-  geom_smooth(mapping = aes(y = pred), method = "lm") +
+  geom_point(mapping = aes(y = pred), colour = "red") +
   theme_classic()
 
 
@@ -833,11 +874,13 @@ names(can_dat)
 
 ggplot(data = can_dat[[11]],
        mapping = aes(x = value, 
-                     y = seedlings_all)) +
+                     y = seedlings_all,
+                     colour = Property)) +
   geom_point() +
   geom_smooth(method = "lm", se = FALSE) +
-  facet_wrap(~Property, scales = "free") +
-  theme_classic()
+  #facet_wrap(~Property, scales = "free") +
+  theme_classic() +
+  theme(legend.position = "none")
 
 
 ### model this for properties where there was some recruitment
@@ -862,6 +905,13 @@ recruits_prop <-
   ungroup() %>%
   filter(sum > 0) %>%
   pull(Property)
+
+recruits_prop %>%
+  length()
+
+euc_ana$Property %>%
+  unique() %>%
+  length()
 
 scale_this <- function(x){
   (x - mean(x, na.rm = TRUE)) / sd(x, na.rm=TRUE)
