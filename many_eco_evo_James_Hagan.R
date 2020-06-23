@@ -395,6 +395,15 @@ euc_ana$total_cover <-
   select(cov_vars) %>%
   rowSums()
 
+# check the seedlings all variable
+euc_ana$seedlings_all %>%
+  range()
+
+euc_ana %>%
+  filter(seedlings_all > 80) %>%
+  View()
+
+# surveyID = 44 has a very high number of small seedlings
 
 
 ### examine the seedlings variables because some plots do not have seedlings
@@ -442,7 +451,7 @@ euc_ana %>%
 
 # site variables
 site_vars <- 
-  c(site_vars[!(site_vars %in% c("Easting", "Northing"))], "Property_season")
+  c(site_vars[!(site_vars %in% c("Easting", "Northing"))], "Property_season", "MrVBF")
 
 # soil variables
 soil_vars
@@ -478,7 +487,6 @@ euc_ana$non_wood_plant <-
   euc_ana %>%
   select(ExoticAnnualHerb_cover, perennial_herb) %>%
   rowSums()
-
 
 
 ### which variables are the most important?
@@ -524,10 +532,6 @@ euc_ana %>%
   nrow()
 
 # 25% of plots have any recruitment
-
-euc_ana %>%
-  filter(seedling_y_n > 0) %>%
-  nrow()
 
 euc_ana %>%
   filter(Euc_canopy_cover > 0) %>%
@@ -741,8 +745,26 @@ rsquared(lm_mean1)
 # check model coefficients
 summary(lm_mean1)
 
+# plot the predictions
+
+plot(log(1+mean_dat$seedlings_all), predict(lm_mean1))
+
+ggplot(data = mean_dat %>%
+         mutate(pred = predict(lm_mean1)),
+       mapping = aes(x = sqrt(distance_to_Eucalypt_canopy_m), 
+                     y = log(1+mean_dat$seedlings_all))) +
+  geom_point() +
+  geom_smooth(mapping = aes(y = pred), method = "lm") +
+  theme_classic()
+
+
 
 ### fit a model to the full dataset
+
+# negative binomial is not a bad fit but first should fit a normal Poisson
+
+# however, there is a lot of unexplained variance when canopy cover is very low
+# I want to see which variables explain this variation before modelling further
 
 fit_vars2 <- 
   c("distance_to_Eucalypt_canopy_m",
@@ -751,7 +773,11 @@ fit_vars2 <-
     "non_wood_plant",
     "total_perennial_grass",
     "ExoticAnnualGrass_cover",
-    "Litter_cover")
+    "Litter_cover", 
+    "Euc_canopy_cover",
+    "K_perc",
+    "Th_ppm",
+    "MrVBF")
 
 scale_this <- function(x){
   (x - mean(x, na.rm = TRUE)) / sd(x, na.rm=TRUE)
@@ -763,23 +789,112 @@ full_dat <-
                ~ scale_this(.))
   
 lm_full1 <- 
-  lme4::glmer(seedling_y_n ~ 
-             (distance_to_Eucalypt_canopy_m) + 
+  lme4::glmer.nb(seedlings_all ~ 
              (ExoticAnnualGrass_cover) +
              (total_perennial_grass) +
              Litter_cover +
              PET +
              Season +
+             Euc_canopy_cover:(distance_to_Eucalypt_canopy_m) +
              (1|Property),
-           data = full_dat, family = binomial)
+           data = full_dat %>%
+             filter(SurveyID != 44), verbose = TRUE)
+
+overdisp_fun(lm_full1)
+
+ggplot(data = full_dat %>%
+         filter(SurveyID != 44) %>%
+         mutate(pred = predict(lm_full1, type = "response")),
+       mapping = aes(x = distance_to_Eucalypt_canopy_m, 
+                     y = seedlings_all)) +
+  geom_point() +
+  geom_point(mapping = aes(y = pred), colour = "red") +
+  facet_wrap(~Property, scales = "free") +
+  theme_classic()
+
+piecewiseSEM::rsquared(lm_full1)
 
 
+### explore dataset with low distance to eucalypt canopy
+
+can_dat <- 
+  euc_ana %>%
+  filter(distance_to_Eucalypt_canopy_m == 0) %>%
+  select(SurveyID, Season, Property, Property_season, quadrat_no,
+         fit_vars2, seedlings_all)
+
+can_dat <- 
+  can_dat %>%
+  gather(fit_vars2, 
+         key = "variable", value = "value") %>%
+  split(., .$variable)
+
+names(can_dat)
+
+ggplot(data = can_dat[[11]],
+       mapping = aes(x = value, 
+                     y = seedlings_all)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(~Property, scales = "free") +
+  theme_classic()
 
 
+### model this for properties where there was some recruitment
 
+fit_vars2 <- 
+  c("distance_to_Eucalypt_canopy_m",
+    "PET",
+    "bare_all",
+    "non_wood_plant",
+    "total_perennial_grass",
+    "ExoticAnnualGrass_cover",
+    "Litter_cover", 
+    "Euc_canopy_cover",
+    "K_perc",
+    "Th_ppm",
+    "MrVBF")
 
+recruits_prop <- 
+  euc_ana %>%
+  group_by(Property) %>%
+  summarise(sum = sum(seedlings_all) ) %>%
+  ungroup() %>%
+  filter(sum > 0) %>%
+  pull(Property)
 
+scale_this <- function(x){
+  (x - mean(x, na.rm = TRUE)) / sd(x, na.rm=TRUE)
+}
 
+rec_dat <- 
+  euc_ana %>%
+  filter(Property %in% recruits_prop) %>%
+  filter(distance_to_Eucalypt_canopy_m == 0) %>%
+  select(SurveyID, Season, Property, Property_season, quadrat_no,
+         fit_vars2, seedlings_all, seedling_y_n) %>%
+  mutate_at(vars(fit_vars2),
+            ~ scale_this(.))
 
+lm_rec1 <- 
+  lme4::glmer.nb(seedlings_all ~ 
+                   total_perennial_grass +
+                   Litter_cover +
+                   ExoticAnnualGrass_cover +
+                   (1|Property) +
+                   (total_perennial_grass+0|Property),
+                 data = rec_dat, verbose = TRUE)
 
+overdisp_fun(lm_rec1)
+
+ggplot(data = rec_dat %>%
+         mutate(pred = predict(lm_rec1, type = "response")),
+       mapping = aes(x = total_perennial_grass, 
+                     y = seedling_y_n)) +
+  geom_point() +
+  geom_point(mapping = aes(y = pred), colour = "red") +
+  facet_wrap(~Property, scale = "free") +
+  theme_classic()
+
+piecewiseSEM::rsquared(lm_rec1)
 
