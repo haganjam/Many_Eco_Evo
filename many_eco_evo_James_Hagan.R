@@ -1,16 +1,6 @@
 
 # Title: ManyEcoEvo analysis (James G. Hagan)
 
-
-# to do:
-
-# check weird outlier with canopy cover and distance to eucalypt
-
-# choose the variables
-
-# perform the paired analysis and then run some models
-
-
 # load relevant libraries
 library(readr)
 library(dplyr)
@@ -36,7 +26,6 @@ overdisp_fun <- function(model) {
   pval <- pchisq(Pearson.chisq, df=rdf, lower.tail=FALSE)
   c(chisq=Pearson.chisq,ratio=prat,rdf=rdf,p=pval)
 }
-
 
 
 # load the data
@@ -300,9 +289,8 @@ euc_ana <-
 
 euc_ana$seedlings_all <- 
   euc_ana %>%
-  select(seed_vars) %>%
+  select(all_of(seed_vars) ) %>%
   rowSums()
-
 
 # (2) sum-up the'bare ground' type variables:
 # BareGround_cover
@@ -313,13 +301,11 @@ euc_ana$bare_all <-
   select(BareGround_cover, MossLichen_cover) %>%
   rowSums()
 
-
 # (3) create an exotic annual plant cover variable (exotic grass and herbs)
 euc_ana$exotic_annual <- 
   euc_ana %>%
   select(contains("ExoticAnnual")) %>%
   rowSums()
-
 
 # (4) create perennial native grass/graminoid variable
 euc_ana$native_perennial_grass <- 
@@ -589,6 +575,7 @@ ggplot(data = euc_ana %>%
   facet_wrap(~variable, scales = "free")
 
 
+
 ### Analysis 1
 
 ### do a paired analysis at the site-season scale
@@ -681,7 +668,7 @@ pair_dat_mod[[3]] %>%
 
 
 
-### fit a mean-level model (i.e. each property-season combination)
+### fit a mean-level model (i.e. each Property)
 
 fit_vars <- 
   c("distance_to_Eucalypt_canopy_m",
@@ -702,60 +689,22 @@ fit_vars <-
 
 mean_dat <- 
   euc_ana %>%
-  group_by(Property) %>%
+  group_by(Property, Season) %>%
   summarise_at(vars(fit_vars),
                ~ mean(., na.rm = TRUE)) %>%
   ungroup()
 
-mean_dat %>%
-  select(fit_vars[1:round((length(fit_vars)/2), 0)]) %>%
-  pairs()
-
-mean_dat %>%
-  select(fit_vars[1:round((length(fit_vars)/2), 0)]) %>%
-  cor(method = "spearman") %>%
-  corrplot(method = "number")
-
-mean_dat %>%
-  select(fit_vars[(round((length(fit_vars)/2), 0)+1):length(fit_vars)]) %>%
-  pairs()
-
-mean_dat %>%
-  select(fit_vars[(round((length(fit_vars)/2), 0)+1):length(fit_vars)]) %>%
-  cor(method = "spearman") %>%
-  corrplot(method = "number")
-
 
 # check the variable distributions
 mean_dat %>%
-  gather(fit_vars[1:10],
+  gather(fit_vars[c(1:2, 11, 13) ],
          key = "variable", value = "value") %>%
   ggplot(data = .,
-         mapping = aes(x = value)) +
+         mapping = aes(x = sqrt(value) )) +
   geom_histogram() +
   facet_wrap(~ variable, scales = "free") +
   theme_classic()
 
-mean_dat %>%
-  gather(fit_vars[11:13],
-         key = "variable", value = "value") %>%
-  ggplot(data = .,
-         mapping = aes(x = value)) +
-  geom_histogram() +
-  facet_wrap(~ variable, scales = "free") +
-  theme_classic()
-
-mean_dat %>%
-  gather(fit_vars[15:20],
-         key = "variable", value = "value") %>%
-  ggplot(data = .,
-         mapping = aes(x = log10(1 + value) )) +
-  geom_histogram() +
-  facet_wrap(~ variable, scales = "free") +
-  theme_classic()
-
-mean_dat$seedlings_all %>%
-  summary()
 
 
 # plot some of these relationships
@@ -773,9 +722,10 @@ names(mean_dat)
 
 # fit a model without random effects using restricted maximum likelihood (function gls)
 lm_mean1 <- lm(log10(1+seedlings_all) ~ 
-                   PET,
+                   PET + sqrt(distance_to_Eucalypt_canopy_m) +
+                   sqrt(ExoticAnnualGrass_cover) + sqrt(total_perennial_grass) +
+                   Season,
                    data = mean_dat)
-
 
 # check the model assumptions
 plot(lm_mean1, 1)
@@ -792,7 +742,7 @@ summary(lm_mean1)
 # plot the predictions
 ggplot(data = mean_dat %>%
          mutate(pred = predict(lm_mean1)),
-       mapping = aes(x = PET, 
+       mapping = aes(x = sqrt(ExoticAnnualGrass_cover), 
                      y = log10(1+mean_dat$seedlings_all))) +
   geom_point() +
   geom_point(mapping = aes(y = pred), colour = "red") +
