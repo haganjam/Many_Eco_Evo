@@ -77,6 +77,7 @@ euc_dat <-
 summary(euc_dat)
 
 
+
 ### create vectors with different variable combinations
 
 # site variables
@@ -385,6 +386,32 @@ euc_ana$total_cover <-
 euc_ana$seedlings_all %>%
   range()
 
+
+# (14) create a native herbaceous cover variable
+euc_ana$native_herbs <- 
+  euc_ana %>%
+  select(c("NativePerennialGrass_cover", "NativePerennialGrass_cover", "NativePerennialHerb_cover")) %>%
+  rowSums()
+
+
+# (15) create an exotic herb variable
+euc_ana$exotic_herbs <- 
+  euc_ana %>%
+  select(c("ExoticAnnualGrass_cover", "ExoticAnnualHerb_cover", 
+           "ExoticPerennialHerb_cover", "ExoticPerennialGrass_cover")) %>%
+  rowSums()
+
+
+# (16) create a total exotic cover variable
+euc_ana$exotic_all <- 
+  euc_ana %>%
+  select(c("ExoticAnnualGrass_cover", "ExoticAnnualHerb_cover", 
+           "ExoticPerennialHerb_cover", "ExoticPerennialGrass_cover",
+           "ExoticShrub_cover")) %>%
+  rowSums()
+
+
+# check the seedling outlier
 euc_ana %>%
   filter(seedlings_all > 80) %>%
   View()
@@ -409,97 +436,32 @@ recruit_sites
 
 ### which cover variables are important?
 
-cov_sub <- 
-  c("bare_all", 
-    "total_perennial_grass", "native_perennial_grass", "ExoticAnnualGrass_cover", "ExoticPerennialGrass_cover",
-    "exotic_annual", "ExoticAnnualHerb_cover", 
-    "perennial_herb", 
-    "Litter_cover",
-    "shrub")
-
-euc_ana %>%
-  select(cov_sub, total_cover) %>%
-  mutate_at(vars(cov_sub), ~(./total_cover)*100) %>%
-  summary()
-
-# exotic perennial grass cover is generally low and therefore can use total grass cover
-
-euc_ana %>%
-  filter(shrub > 0) %>%
-  View()
-
-# keep the shrubs in mind but they are only in a few plots
-
-
 ### reduce the euc_ana variables
-euc_ana %>%
-  names()
+names(euc_ana)
 
-# site variables
-site_vars <- 
-  c(site_vars[!(site_vars %in% c("Easting", "Northing"))], "Property_season", "MrVBF")
-
-# soil variables
-soil_vars
-
-# precipitation variables
-prec_vars <- 
-  prec_vars[prec_vars == "PET"]
-
-# eucalyptus variables
-euc_vars
-
-# cover variables
-cov_sub <- 
-  c("bare_all", 
-    "total_perennial_grass", "native_perennial_grass", "ExoticAnnualGrass_cover",
-    "exotic_annual", "ExoticAnnualHerb_cover", 
-    "perennial_herb", 
-    "Litter_cover",
-    "shrub",
-    "total_cover")
-
-# seedling variables
-seed_vars <-
-  c(seed_vars, "seedlings_all", "seedling_y_n", "young_seedling_y_n")
-
-# reduce the variables in euc_ana
 euc_ana <- 
   euc_ana %>%
-  select(site_vars, soil_vars, prec_vars, euc_vars, cov_sub, seed_vars)
+  select("SurveyID", "Date", "Season", "Property", "quadrat_no",
+         "Property_season", 
+         "MrVBF",
+         "K_perc", "Th_ppm", "U_ppm",
+         "PET",
+         "bare_all", 
+         "native_perennial_grass", "native_herbs",
+         "Litter_cover",
+         "ExoticAnnualGrass_cover", "ExoticAnnualHerb_cover", "exotic_annual",
+         "ExoticPerennialHerb_cover", "ExoticPerennialGrass_cover",
+         "exotic_herbs", "exotic_all",
+         "total_perennial_grass", "perennial_herb",
+         "Litter_cover",
+         "shrub",
+         "total_cover",
+         "Euc_canopy_cover", "distance_to_Eucalypt_canopy_m",
+         "euc_sdlgs0_50cm", "euc_sdlgs_50cm_2m", "euc_sdlgs_2m",
+         "seedlings_all", "seedling_y_n", "young_seedling_y_n")
 
-# create a total non-woody plant cover variable (excluding exotic annual grass and total perennial grass)
-euc_ana$non_wood_plant <- 
-  euc_ana %>%
-  select(ExoticAnnualHerb_cover, perennial_herb) %>%
-  rowSums()
 
-
-### which variables are the most important?
-
-# random effects:
-
-# property
-# season
-
-# or just property because they were measured on different plots over time
-
-
-# fixed effects:
-
-# eucalyptus variables
-# distance_to_Eucalypt_canopy_m
-
-# precipitation variables
-# PET
-
-# cover variables
-# bare_all
-# non_wood_plant
-# total_perennial_grass
-# ExoticAnnualGrass_cover
-# Litter_cover
-# total_cover
+### Summary statistics
 
 ((euc_ana %>%
   select(bare_all, non_wood_plant, total_perennial_grass,
@@ -540,45 +502,11 @@ euc_ana %>%
 
 # 80 of 89 (i.e. 90%) are within 20 m of a Eucalypt canopy
 
-# how are grass cover and distance to Eucalypt canopy cover related?
-ggplot(data = euc_ana,
-       mapping = aes(x = (distance_to_Eucalypt_canopy_m), y = total_perennial_grass,
-                     colour = Property)) +
-  geom_point()
-
-# what is the relationship between grass and seedlings within a 20 m eucalypt radius?
-ggplot(data = euc_ana %>%
-         filter(distance_to_Eucalypt_canopy_m < 20),
-       mapping = aes(x = log10(total_perennial_grass), y = seedling_y_n,
-                     colour = Season)) +
-  geom_point() +
-  facet_wrap(~Property, scales = "free")
-
-# explore these variables for distribution etc. within each site
-
-vars <- 
-  c("distance_to_Eucalypt_canopy_m",
-    "PET",
-    "bare_all",
-    "non_wood_plant",
-    "total_perennial_grass",
-    "native_perennial_grass",
-    "ExoticAnnualGrass_cover",
-    "Litter_cover",
-    "total_cover",
-    seed_vars)
-
-ggplot(data = euc_ana %>%
-         gather(vars, key = "variable", value = "val"),
-       mapping = aes(x = val)) +
-  geom_histogram() +
-  facet_wrap(~variable, scales = "free")
-
 
 
 ### Analysis 1
 
-### do a paired analysis at the site-season scale
+### Paired analysis: recruitment vs. no recruitment at the site scale
 
 # get site-year combinations where seedlings were observed
 recruit_sites
@@ -667,65 +595,125 @@ pair_dat_mod[[3]] %>%
 
 
 
+### "sites range from native dominated to more exotic dominated"
+
+### therefore, there should be variation at the property-scale
 
 ### fit a mean-level model (i.e. each Property)
 
+names(euc_ana)
+
 fit_vars <- 
-  c("distance_to_Eucalypt_canopy_m",
+  c("MrVBF",
+    "K_perc", "Th_ppm", "U_ppm",
     "PET",
-    "bare_all",
-    "non_wood_plant",
-    "MrVBF",
-    "K_perc",
-    "Th_ppm",
-    "U_ppm",
-    "shrub",
+    "bare_all", 
+    "native_perennial_grass", "native_herbs",
     "Litter_cover",
-    "total_perennial_grass",
-    "native_perennial_grass",
-    "ExoticAnnualGrass_cover",
-    "exotic_annual",
-    seed_vars)
+    "ExoticAnnualGrass_cover", "ExoticAnnualHerb_cover", "exotic_annual",
+    "ExoticPerennialHerb_cover", "ExoticPerennialGrass_cover",
+    "exotic_herbs", "exotic_all",
+    "total_perennial_grass", "perennial_herb",
+    "Litter_cover",
+    "shrub",
+    "total_cover",
+    "Euc_canopy_cover", "distance_to_Eucalypt_canopy_m",
+    "euc_sdlgs0_50cm", "euc_sdlgs_50cm_2m", "euc_sdlgs_2m",
+    "seedlings_all", "seedling_y_n", "young_seedling_y_n")
 
 mean_dat <- 
   euc_ana %>%
   group_by(Property, Season) %>%
   summarise_at(vars(fit_vars),
                ~ mean(., na.rm = TRUE)) %>%
-  ungroup()
+  ungroup() %>%
+  group_by(Property) %>%
+  summarise_at(vars(fit_vars), list( ~ mean(., na.rm = TRUE),
+                       ~ sd(., na.rm = TRUE) ) )
 
+# check the range of mean exotic cover
+range(mean_dat$exotic_all_mean)
 
-# check the variable distributions
+filter(mean_dat, 
+       exotic_all_mean == max(exotic_all_mean) |
+       exotic_all_mean == min(exotic_all_mean)) %>%
+  select(contains("exotic_all"))
+
 mean_dat %>%
-  gather(fit_vars[c(1:2, 11, 13) ],
-         key = "variable", value = "value") %>%
-  ggplot(data = .,
-         mapping = aes(x = sqrt(value) )) +
-  geom_histogram() +
-  facet_wrap(~ variable, scales = "free") +
-  theme_classic()
+  mutate(egrass_prop = ExoticAnnualGrass_cover_mean/exotic_all_mean) %>%
+  summarise(m = mean(egrass_prop),
+            sd = sd(egrass_prop))
 
 
+# do sites vary in their overall numbers of exotics and natives?
+ggplot(data = mean_dat,
+       mapping = aes(x = exotic_herbs_mean, y = exotic_annual_mean)) +
+  geom_point()
 
-# plot some of these relationships
+cor(x = mean_dat$exotic_annual, y = mean_dat$exotic_herbs)
+
+# exotic annuals and exotic herbs are heavily correlated
+
+ggplot(data = mean_dat,
+       mapping = aes(x = exotic_herbs, y = ExoticAnnualGrass_cover)) +
+  geom_point()
+
+cor(x = mean_dat$ExoticAnnualGrass_cover, y = mean_dat$exotic_herbs)
+
+# are the exotic herbs correlated with PET?
+ggplot(data = mean_dat,
+       mapping = aes(x = PET_mean, y = exotic_all_mean)) +
+  geom_point()
+
+cor(x = mean_dat$exotic_all_mean, y = mean_dat$PET_mean, method = "spearman")
+cor.test(x = mean_dat$exotic_all_mean, y = mean_dat$PET_mean, method = "spearman")
+
+# examine relationship with all seedlings
+ggplot(data = mean_dat,
+       mapping = aes(x = ExoticAnnualGrass_cover_mean, y = seedlings_all_mean,
+                     colour = PET_mean, size = distance_to_Eucalypt_canopy_m_mean)) +
+  geom_point()
+
 mean_dat %>%
-  gather(fit_vars[ !(fit_vars %in% seed_vars) ],
-         key = "mod", value = "val") %>%
-  ggplot(data = .,
-       mapping = aes(x = val, y = log10(1+seedlings_all))) +
-  geom_point() +
-  geom_smooth(se = FALSE, method = "lm") +
-  facet_wrap(~mod, scales = "free") +
-  theme_classic()
+  filter(seedlings_all_mean == 0,
+         ExoticAnnualGrass_cover_mean < 10) %>%
+  View()
 
-names(mean_dat)
+ggplot(data = mean_dat,
+       mapping = aes(x = exotic_all_mean, y = seedlings_all_mean,
+                     colour = PET_mean, size = distance_to_Eucalypt_canopy_m_mean)) +
+  geom_point()
 
-# fit a model without random effects using restricted maximum likelihood (function gls)
-lm_mean1 <- lm(log10(1+seedlings_all) ~ 
-                   PET + sqrt(distance_to_Eucalypt_canopy_m) +
-                   sqrt(ExoticAnnualGrass_cover) + sqrt(total_perennial_grass) +
-                   Season,
-                   data = mean_dat)
+# what happens at sites with low recruitment on the left hand spectrum?
+ggplot(data = mean_dat,
+       mapping = aes(x = exotic_all_mean, y = seedlings_all_mean,
+                     colour = PET_mean, size = distance_to_Eucalypt_canopy_m_mean)) +
+  geom_point()
+
+# 
+ggplot(data = mean_dat,
+       mapping = aes(x = exotic_all_mean, y = seedlings_all_mean,
+                     colour = PET_mean, size = Litter_cover_mean)) +
+  geom_point()
+
+
+
+# what is the relationship between native perennial grasses?
+ggplot(data = mean_dat,
+       mapping = aes(x = native_perennial_grass_mean, y = seedlings_all_mean)) +
+  geom_point()
+
+
+qr_1 <- quantreg::rq(formula = seedlings_all_mean ~ exotic_all_mean,
+             data = mean_dat, tau = 0.95)
+
+summary(qr_1)
+
+# fit a linear model to these data
+lm_mean1 <- lm(log10(1+seedlings_all_mean) ~ 
+                 exotic_annual_mean +
+                 Litter_cover_mean +
+                 sqrt(distance_to_Eucalypt_canopy_m_mean), data = mean_dat)
 
 # check the model assumptions
 plot(lm_mean1, 1)
@@ -747,6 +735,11 @@ ggplot(data = mean_dat %>%
   geom_point() +
   geom_point(mapping = aes(y = pred), colour = "red") +
   theme_classic()
+
+
+
+
+
 
 
 
