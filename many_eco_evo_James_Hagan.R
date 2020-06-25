@@ -16,8 +16,15 @@ library(lme4)
 library(piecewiseSEM)
 library(nlme)
 
-# load the overdispersion function (GLMM FAQ)
+# make a folder to export figures and tables
+if(! dir.exists(here("figures_tables"))){
+  dir.create(here("figures_tables"))
+}
 
+
+# define some useful functions
+
+# load the overdispersion function (GLMM FAQ)
 overdisp_fun <- function(model) {
   rdf <- df.residual(model)
   rp <- residuals(model,type="pearson")
@@ -25,6 +32,27 @@ overdisp_fun <- function(model) {
   prat <- Pearson.chisq/rdf
   pval <- pchisq(Pearson.chisq, df=rdf, lower.tail=FALSE)
   c(chisq=Pearson.chisq,ratio=prat,rdf=rdf,p=pval)
+}
+
+# AICc function from qPCR package
+AICc <- function(object)
+{
+  aic <- AIC(object)
+  if (!is.numeric(aic)) stop("Cannot calculate AIC!")
+  k <- length(coef(object))
+  n <- length(residuals(object))
+  aic + ((2 * k * (k + 1))/(n - k - 1))
+}
+
+# akaike.weights function from qPCR package
+akaike.weights <- function(x)
+{
+  x <- x[!is.na(x)]
+  delta.aic <- x - min(x, na.rm = TRUE)
+  rel.LL <- exp(-0.5 * delta.aic)
+  sum.LL <- sum(rel.LL, na.rm = TRUE)
+  weights.aic <- rel.LL/sum.LL
+  return(list(deltaAIC = delta.aic, rel.LL = rel.LL, weights = weights.aic))
 }
 
 
@@ -495,26 +523,29 @@ euc_ana %>%
 
 # 25% of plots have any recruitment
 
+
+# check the Sharrock property because it has very high recruitment
 euc_ana %>%
-  filter(Euc_canopy_cover > 0) %>%
-  nrow()
-
-ggplot(data = euc_ana %>%
-         filter(seedling_y_n > 0),
-       mapping = aes(x = (distance_to_Eucalypt_canopy_m) )) +
-  geom_histogram()
+  gather("MrVBF",
+         "K_perc", "Th_ppm", "U_ppm",
+         "annual_precipitation",
+         "bare_all", "Rock_cover",
+         "Euc_canopy_cover", "distance_to_Eucalypt_canopy_m",
+         "Litter_cover", "total_cover",
+         key = "variable", value = "val") %>%
+  ggplot(data = .,
+         mapping = aes(x = Property, y = val, colour = Season)) +
+  geom_boxplot() +
+  facet_wrap(~variable, scales = "free") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90))
 
 euc_ana %>%
-  filter(seedling_y_n > 0, distance_to_Eucalypt_canopy_m < 10) %>%
-  nrow()
-
-# 72 of 89 (i.e. 81%) are within 10 m of a Eucalypt canopy
-
-euc_ana %>%
-  filter(seedling_y_n > 0, distance_to_Eucalypt_canopy_m < 20) %>%
-  nrow()
-
-# 80 of 89 (i.e. 90%) are within 20 m of a Eucalypt canopy
+  group_by(Property) %>%
+  summarise(n = n(),
+            distance_to_Eucalypt_canopy_m = mean(distance_to_Eucalypt_canopy_m),
+            total_cover = mean(total_cover),
+            Litter_cover = mean(Litter_cover))
 
 
 
@@ -768,6 +799,13 @@ ggplot(data = mean_dat,
        mapping = aes(x = distance_to_Eucalypt_canopy_m_mean, y = seedling_y_n_mean)) +
   geom_point()
 
+ggplot(data = mean_dat,
+       mapping = aes(x = annual_precipitation_mean, y = distance_to_Eucalypt_canopy_m_mean)) +
+  geom_point()
+
+cor.test(mean_dat$annual_precipitation_mean, mean_dat$distance_to_Eucalypt_canopy_m_mean,
+         method = "spearman")
+
 
 # which variables are correlated with exotic proportion?
 ggplot(data = mean_dat,
@@ -818,12 +856,12 @@ mean_dat %>%
 # set up models
 
 # variables to conserve in all models (i.e. moderators or covariates)
-cons_vars <- c( "Litter_cover_mean", 
-                "distance_to_Eucalypt_canopy_m_mean", 
-                "annual_precipitation_mean")
+cons_vars <- c("annual_precipitation_mean")
 
 # set up a list of explanatory variables for the four models
-exp_vars <- list(c("exotic_proportion_mean", cons_vars),
+exp_vars <- list(c('1'),
+                 c(cons_vars),
+                 c("exotic_proportion_mean", cons_vars),
                  c("total_grass_mean", cons_vars),
                  c("exotic_grass_mean", cons_vars),
                  c("native_perennial_grass_mean", cons_vars),
@@ -849,23 +887,24 @@ for (i in seq_along( 1:length(exp_vars) ) ) {
   lm_out_glm[[i]] <- 
     glm(reformulate(exp_vars[[i]], "seedling_y_n_mean"), 
         data = mod_dat,
-        family = quasibinomial)
+        family = binomial)
   
   cof_out_glm[[i]] <- tidy(lm_out_glm[[i]])
   
   diag_out_glm[[i]] <- 
     bind_cols(glance(lm_out_glm[[i]]), piecewiseSEM::rsquared(lm_out_glm[[i]]) ) %>%
-    mutate(overdisp = lm_out_glm[[i]]$deviance/lm_out_glm[[i]]$df.residual)
+    mutate(overdisp = lm_out_glm[[i]]$deviance/lm_out_glm[[i]]$df.residual,
+           AICc = AICc(lm_out_glm[[i]]))
   
 }
 
 # check model assumptions by plotting residuals against each variable
-lapply(lm_out_glm, function(x) { 
+lapply(lm_out_glm[2:length(lm_out_glm)], function(x) { 
   
   mod_dat %>%
     mutate(resids = residuals(x, type = "deviance"),
            preds = predict(x, type = "response")) %>%
-    gather(unique(unlist(exp_vars)), preds,
+    gather(unique(unlist(exp_vars[2:length(lm_out_glm)])), preds,
            key = "explan", value = "var") %>%
     ggplot(data = .,
            mapping = aes(x = var, y = resids)) +
@@ -877,17 +916,41 @@ lapply(lm_out_glm, function(x) {
   })
 
 # check model diagnostics and overdispersion
+diag_out_glm <- 
+  diag_out_glm %>%
+  bind_rows(.id = "model")
+
+# calculate the aicc weights
+diag_out_glm$aicc_weights <- akaike.weights(diag_out_glm$AICc)$weights
+
+# add the explanatory variables
+diag_out_glm$predictors <- 
+  lapply(exp_vars, function(x) { 
+  paste(x, collapse = ".")  }) %>%
+  unlist()
+
+View(diag_out_glm)
+
+# create a table to export
+names(diag_out_glm)
+
 diag_out_glm %>%
-  bind_rows(.id = "model") %>%
-  View()
+  mutate(delta_AICc = AICc - min(AICc)) %>%
+  select(model, predictors, method, R.squared, AICc, delta_AICc, aicc_weights) %>%
+  arrange(desc(aicc_weights) ) %>%
+  write_csv(here("figures_tables/table_1.csv"))
 
 cof_out_glm %>%
   bind_rows(.id = "model")
 
+drop1(lm_out_glm[[1]], test = c("Chisq"))
+
+confint(lm_out_glm[[1]])
+
 
 # plot the predictions
-ggplot(data = mean_dat %>%
-         mutate(pred = predict(lm_out_glm[[1]], type = "response")),
+ggplot(data = mean_dat %>% filter(Property != "Sharrock") %>%
+         mutate(pred = predict(lm_out_glm[[3]], type = "response")),
        mapping = aes(x = exotic_proportion_mean, 
                      y = seedling_y_n_mean)) +
   geom_point() +
@@ -895,13 +958,13 @@ ggplot(data = mean_dat %>%
   theme_classic()
 
 
+mean_dat$Property %>% unique()
 
 
 
 
 
-
-### fit a model to the full dataset
+### proportion at each season at each site
 
 # negative binomial is not a bad fit but first should fit a normal Poisson
 
@@ -909,27 +972,91 @@ ggplot(data = mean_dat %>%
 # I want to see which variables explain this variation before modelling further
 
 fit_vars2 <- 
-  c("distance_to_Eucalypt_canopy_m",
-    "PET",
-    "bare_all",
-    "non_wood_plant",
-    "total_perennial_grass",
-    "ExoticAnnualGrass_cover",
-    "Litter_cover", 
-    "Euc_canopy_cover",
-    "K_perc",
-    "Th_ppm",
-    "MrVBF")
+  c("MrVBF",
+    "K_perc", "Th_ppm", "U_ppm",
+    "annual_precipitation",
+    "bare_all", "Rock_cover",
+    "native_perennial_grass", "NativePerennialHerb_cover", "native_non_woody",
+    "Litter_cover",
+    "ExoticAnnualGrass_cover", "ExoticAnnualHerb_cover", "exotic_annual",
+    "ExoticPerennialHerb_cover", "ExoticPerennialGrass_cover",
+    "exotic_herbs", "exotic_grass", "exotic_non_woody",
+    "total_grass", "total_non_woody",
+    "Litter_cover",
+    "shrub",
+    "total_cover", 
+    "exotic_proportion",
+    "Euc_canopy_cover", "distance_to_Eucalypt_canopy_m",
+    "euc_sdlgs0_50cm", "euc_sdlgs_50cm_2m", "euc_sdlgs_2m",
+    "seedlings_all", "seedling_y_n", "young_seedling_y_n")
 
-scale_this <- function(x){
+# there are many sites without any recruitment
+# then, for sites where there is some recruitment, there is like one plot
+# let's only use 'well-sampled' sites
+
+well_samps <- 
+  euc_ana %>%
+  group_by(Property, Season, Property_season, seedling_y_n) %>%
+  summarise(n = n()) %>%
+  spread(key = "seedling_y_n", value = "n") %>%
+  filter(`0` >= 2, `1` >= 2) %>%
+  pull(Property_season)
+
+
+# explore these data
+euc_ana %>%
+  filter(Property_season %in% well_samps) %>%
+  gather("exotic_herbs", "exotic_grass", "Litter_cover", 
+         "distance_to_Eucalypt_canopy_m",
+         "native_perennial_grass",
+         key = "variable", value = "val") %>%
+  split(., .$variable) %>%
+  lapply(., function(x) { 
+    
+    ggplot(data = x,
+           mapping = aes(x = seedling_y_n, y = val, colour = Season)) +
+      geom_point() +
+      geom_smooth(method = "lm", se = FALSE) +
+      facet_wrap(~Property, scales = "free") +
+      theme_classic() +
+      theme(legend.position = "none")
+    
+    } )
+
+# random slopes
+# - 
+  
+
+scale_this <- 
+  function(x){
   (x - mean(x, na.rm = TRUE)) / sd(x, na.rm=TRUE)
 }
 
 full_dat <- 
   euc_ana %>%
-  mutate_at(vars(fit_vars2),
-               ~ scale_this(.))
+  filter(Property_season %in% well_samps) %>%
+  mutate_at(vars(fit_vars2[!(fit_vars2 %in% c("seedling_y_n", "young_seedling_y_n"))]),
+               ~ scale_this(.)) %>%
+  ungroup()
+
   
+lm_full_1 <- 
+  glmer(seedling_y_n ~ 
+          exotic_grass + native_perennial_grass + exotic_herbs + Litter_cover +
+          (1|Property_season) + (exotic_grass+0|Property_season) + 
+          (native_perennial_grass+0|Property_season) + (exotic_herbs+0|Property_season) +
+          (Litter_cover+0|Property_season),
+        data = full_dat, family = binomial)
+
+
+lm_full_1
+
+car::vif(lm_full_1)
+
+piecewiseSEM::rsquared(lm_full_1)
+
+drop1(lm_full_1, test = "Chisq")
+
 lm_full1 <- 
   lme4::glmer.nb(seedlings_all ~ 
              (ExoticAnnualGrass_cover) +
