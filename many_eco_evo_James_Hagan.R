@@ -610,11 +610,7 @@ pair_dat_mod[[3]] %>%
 
 
 
-### "sites range from native dominated to more exotic dominated"
-
-### therefore, there should be variation at the property-scale
-
-### fit a mean-level model (i.e. each Property)
+### examine mean-level trends at the property scale (i.e. each Property)
 
 names(euc_ana)
 
@@ -657,18 +653,22 @@ mean_dat <-
   summarise_at(vars(all_of(fit_vars)), list( ~ mean(., na.rm = TRUE),
                        ~ sd(., na.rm = TRUE) ) )
 
+
 # check the range of mean exotic cover
 range(mean_dat$exotic_proportion_mean)
 
-filter(mean_dat, 
-       exotic_proportion_mean == max(exotic_proportion_mean) |
-         exotic_proportion_mean == min(exotic_proportion_mean)) %>%
+mean_dat %>%
+  filter(exotic_proportion_mean == max(exotic_proportion_mean) | exotic_proportion_mean == min(exotic_proportion_mean)) %>%
   select(contains("exotic_proportion"))
 
 mean_dat %>%
   mutate(egrass_prop = ExoticAnnualGrass_cover_mean/exotic_non_woody_mean) %>%
-  summarise(m = mean(egrass_prop),
-            sd = sd(egrass_prop))
+  summarise(m = mean(egrass_prop), sd = sd(egrass_prop))
+
+mean_dat %>%
+  filter(annual_precipitation_mean == max(annual_precipitation_mean) | annual_precipitation_mean == min(annual_precipitation_mean)) %>%
+  select(contains("annual_precipitation"))
+
 
 
 # characterise the gradient:
@@ -682,6 +682,15 @@ cor.test(mean_dat$annual_precipitation_mean, mean_dat$Litter_cover_mean,
          method = "spearman")
 
 # clear increase in litter cover along the rainfall gradient
+
+# total non-woody plant cover
+ggplot(data = mean_dat,
+       mapping = aes(x = annual_precipitation_mean, y = total_non_woody_mean)) +
+  geom_point()
+
+cor.test(mean_dat$annual_precipitation_mean, mean_dat$total_non_woody_mean,
+         method = "spearman")
+
 
 # exotic plant cover
 ggplot(data = mean_dat,
@@ -790,26 +799,20 @@ mean_dat %>%
 # other variables don't seem very important
 
 
-### fit a standard linear model (Gaussian errors) to these data 
-
-# set up a function for the asinTransform
-asinTransform <- function(p) { asin(sqrt(p)) }
-
-# examine how the asin transformation affects the distribution
-hist(asinTransform(mean_dat$seedling_y_n_mean))
+### fit a generalised linear model to these data
 
 # how are the other three variables distributed?
 mean_dat %>%
   select(exotic_proportion_mean, Litter_cover_mean, annual_precipitation_mean,
          distance_to_Eucalypt_canopy_m_mean, total_grass_mean, exotic_grass_mean,
-         native_perennial_grass_mean) %>%
+         native_perennial_grass_mean, exotic_herbs_mean) %>%
   gather(key = "var", value = "val") %>%
   ggplot(data = .,
          mapping = aes(x = (val) )) +
   geom_histogram() +
   facet_wrap(~var, scales = "free")
 
-# square root transform exotic_grass_mean because it is a bit skewed
+# square root transform exotic_grass_mean and exotic_herbs because it is a bit skewed
 
 
 # set up models
@@ -823,37 +826,17 @@ cons_vars <- c( "Litter_cover_mean",
 exp_vars <- list(c("exotic_proportion_mean", cons_vars),
                  c("total_grass_mean", cons_vars),
                  c("exotic_grass_mean", cons_vars),
-                 c("native_perennial_grass_mean", cons_vars))
+                 c("native_perennial_grass_mean", cons_vars),
+                 c("exotic_herbs_mean", cons_vars))
 
 # set up a data frame to model with the transformed variables
 mod_dat <- 
   mean_dat %>%
-  mutate(seedling_y_n_mean_as = asinTransform(seedling_y_n_mean),
-         exotic_grass_mean = sqrt(exotic_grass_mean))
+  mutate(exotic_grass_mean = sqrt(exotic_grass_mean),
+         exotic_herbs_mean = sqrt(exotic_herbs_mean))
 
 
-# Guassian errors
-
-# create output lists
-cof_out <- vector("list", length = length(exp_vars))
-diag_out <- vector("list", length = length(exp_vars))
-
-# run a loop to fit the different models
-for (i in seq_along( 1:length(exp_vars) ) ) {
-  
-  lm_exp <- lm(reformulate(exp_vars[[i]], "seedling_y_n_mean_as"), data = mod_dat)
-  cof_out[[i]] <- tidy(lm_exp)
-  diag_out[[i]] <- glance(lm_exp)
-}
-
-diag_out %>%
-  bind_rows(.id = "model")
-
-cof_out %>%
-  bind_rows(.id = "model")
-
-
-# binomial errors
+# binomial errors for prpportion data
 
 # create output lists
 lm_out_glm <- vector("list", length = length(exp_vars))
@@ -863,9 +846,10 @@ diag_out_glm <- vector("list", length = length(exp_vars))
 # run a loop to fit the different models
 for (i in seq_along( 1:length(exp_vars) ) ) {
   
-  lm_out_glm[[i]] <- glm(reformulate(exp_vars[[i]], "seedling_y_n_mean"), 
-                data = mod_dat,
-                family = quasibinomial)
+  lm_out_glm[[i]] <- 
+    glm(reformulate(exp_vars[[i]], "seedling_y_n_mean"), 
+        data = mod_dat,
+        family = quasibinomial)
   
   cof_out_glm[[i]] <- tidy(lm_out_glm[[i]])
   
@@ -875,7 +859,7 @@ for (i in seq_along( 1:length(exp_vars) ) ) {
   
 }
 
-# check model assumptions
+# check model assumptions by plotting residuals against each variable
 lapply(lm_out_glm, function(x) { 
   
   mod_dat %>%
@@ -892,16 +876,14 @@ lapply(lm_out_glm, function(x) {
   
   })
 
-
-piecewiseSEM::rsquared(lm_out_glm[[4]])
-
-summary(lm_out_glm[[1]])
-
+# check model diagnostics and overdispersion
 diag_out_glm %>%
-  bind_rows(.id = "model")
+  bind_rows(.id = "model") %>%
+  View()
 
 cof_out_glm %>%
   bind_rows(.id = "model")
+
 
 # plot the predictions
 ggplot(data = mean_dat %>%
