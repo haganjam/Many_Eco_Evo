@@ -55,6 +55,12 @@ akaike.weights <- function(x)
   return(list(deltaAIC = delta.aic, rel.LL = rel.LL, weights = weights.aic))
 }
 
+# scale and center function
+scale_this <- 
+  function(x){
+    (x - mean(x, na.rm = TRUE)) / sd(x, na.rm=TRUE)
+  }
+
 
 # load the data
 euc_dat <- readr::read_delim("data/Euc_data.csv", delim = ",")
@@ -447,22 +453,10 @@ euc_ana %>%
 # surveyID = 44 has a very high number of small seedlings
 
 
-# create a list of property season combinations where recruitment occurred
-recruit_sites <- 
-  euc_ana %>%
-  group_by(Property_season) %>%
-  summarise(seedling_y_n = sum(seedling_y_n),
-            n = n()) %>%
-  ungroup() %>%
-  filter(seedling_y_n > 0) %>%
-  pull(Property_season)
 
-recruit_sites
+# which cover variables are important?
 
-
-### which cover variables are important?
-
-### reduce the euc_ana variables
+# reduce the euc_ana variables
 names(euc_ana)
 
 euc_ana <- 
@@ -511,8 +505,6 @@ prop_cov %>%
   filter(prop < 80) %>%
   View()
 
-# important summary statistics to report
-
 # how many plots in total?
 nrow(euc_ana)
 
@@ -549,99 +541,8 @@ euc_ana %>%
 
 
 
-### Analysis 1 (# redo with the new variables!)
 
-### Paired analysis: recruitment vs. no recruitment at the site scale (# needs redoing)
-
-# get site-year combinations where seedlings were observed
-recruit_sites
-
-g_vars <- c("total_perennial_grass",
-            "ExoticAnnualGrass_cover",
-            "native_perennial_grass")
-
-pair_dat <- 
-  euc_ana %>%
-  filter(Property_season %in% recruit_sites) %>%
-  group_by(Property, Season, Property_season, seedling_y_n) %>%
-  summarise_at(vars(g_vars),
-               list(m = ~ mean(., na.rm = TRUE),
-                    n = ~ n()) ) %>%
-  ungroup() %>%
-  group_by(Property, Season, Property_season) %>%
-  mutate(n = n()) %>%
-  filter(n > 1) %>%
-  summarise_at(vars(paste(g_vars, c("m"), sep = "_")),
-               ~ diff(., na.rm = TRUE)) %>%
-  ungroup() %>%
-  gather(paste(g_vars, c("m"), sep = "_"),
-         key = "grass_variable", value = "cover")
-
-euc_ana$Property_season %>%
-  unique() %>%
-  length()
-
-pair_dat$Property_season %>%
-  unique() %>%
-  length()
-
-# plot out these differences
-
-ggplot(data = pair_dat, 
-       mapping = aes(x = cover, fill = grass_variable)) +
-  geom_histogram() +
-  geom_vline(xintercept = 0) +
-  facet_wrap(~Season, scales = "free") +
-  theme_classic()
-
-split(pair_dat, pair_dat$grass_variable) %>%
-  lapply(., function(x) { t.test(x = x$cover, alternative = c("two.sided"), mu = 0) })
-
-
-# get moderator variables
-
-mod_vars <- 
-  c("distance_to_Eucalypt_canopy_m",
-    "PET",
-    "bare_all",
-    "non_wood_plant",
-    "MrVBF",
-    "K_perc",
-    "Th_ppm",
-    "U_ppm",
-    "shrub",
-    "Litter_cover")
-
-mod_dat <- 
-  euc_ana %>%
-  group_by(Property, Season, Property_season) %>%
-  summarise_at(vars(mod_vars),
-               ~ mean(., na.rm = TRUE)) %>%
-  ungroup()
-
-
-# join the mod_dat data to the paired data
-pair_dat_mod <- 
-  full_join(pair_dat, mod_dat, by = c("Property", "Season", "Property_season")) %>%
-  split(., .$grass_variable)
-
-pair_dat_mod %>% names()
-
-pair_dat_mod[[3]] %>%
-  gather(mod_vars,
-         key = "mod", value = "val") %>%
-  ggplot(data = .,
-         mapping = aes(x = val, y = cover)) +
-  geom_point() +
-  geom_hline(yintercept = 0) +
-  geom_smooth(se = FALSE, method = "lm") +
-  facet_wrap(~ mod, scales = "free") +
-  theme_classic()
-
-
-
-
-### examine mean-level trends at the property scale (i.e. each Property)
+# site-scale analysis: examine mean-level trends at the property scale (i.e. each Property)
 
 names(euc_ana)
 
@@ -837,7 +738,7 @@ mean_dat %>%
 # other variables don't seem very important
 
 
-### fit a generalised linear model to these data
+# fit a generalised linear model to these data
 
 # how are the other three variables distributed?
 mean_dat %>%
@@ -947,7 +848,6 @@ drop1(lm_out_glm[[1]], test = c("Chisq"))
 
 confint(lm_out_glm[[1]])
 
-
 # plot the predictions
 ggplot(data = mean_dat %>% filter(Property != "Sharrock") %>%
          mutate(pred = predict(lm_out_glm[[3]], type = "response")),
@@ -958,13 +858,13 @@ ggplot(data = mean_dat %>% filter(Property != "Sharrock") %>%
   theme_classic()
 
 
-mean_dat$Property %>% unique()
+# paired analysis between sites
+
+# i.e. do sites with any recruitment have different grass covers?
 
 
 
-
-
-# paired analysis for well-sampled sites
+# site-scale analysis: paired analysis for well-sampled sites
 
 fit_vars2 <- 
   c("MrVBF",
@@ -1017,24 +917,22 @@ euc_ana %>%
     
     } )
 
-# get site-year combinations where seedlings were observed
-recruit_sites
-
-g_vars <- c("total_perennial_grass",
+# define the variables
+g_vars <- c("native_perennial_grass",
             "ExoticAnnualGrass_cover",
-            "native_perennial_grass")
+            "exotic_grass",
+            "total_grass",
+            "Litter_cover")
 
 pair_dat <- 
   euc_ana %>%
-  filter(Property_season %in% recruit_sites) %>%
+  filter(Property_season %in% well_samps) %>%
   group_by(Property, Season, Property_season, seedling_y_n) %>%
   summarise_at(vars(g_vars),
                list(m = ~ mean(., na.rm = TRUE),
                     n = ~ n()) ) %>%
   ungroup() %>%
   group_by(Property, Season, Property_season) %>%
-  mutate(n = n()) %>%
-  filter(n > 1) %>%
   summarise_at(vars(paste(g_vars, c("m"), sep = "_")),
                ~ diff(., na.rm = TRUE)) %>%
   ungroup() %>%
@@ -1055,131 +953,9 @@ ggplot(data = pair_dat,
        mapping = aes(x = cover, fill = grass_variable)) +
   geom_histogram() +
   geom_vline(xintercept = 0) +
-  facet_wrap(~Season, scales = "free") +
+  facet_wrap(~grass_variable) +
   theme_classic()
 
 split(pair_dat, pair_dat$grass_variable) %>%
   lapply(., function(x) { t.test(x = x$cover, alternative = c("two.sided"), mu = 0) })
-
-
-
-
-
-
-
-
-
-# random slopes
-# - native perennial grass
-# - litter cover
-# - exotic herbs
-# - exotic grass
-  
-scale_this <- 
-  function(x){
-  (x - mean(x, na.rm = TRUE)) / sd(x, na.rm=TRUE)
-}
-
-full_dat <- 
-  euc_ana %>%
-  filter(Property_season %in% well_samps) %>%
-  mutate_at(vars(fit_vars2[!(fit_vars2 %in% c("seedling_y_n", "young_seedling_y_n"))]),
-               ~ scale_this(.)) %>%
-  ungroup()
-
-  
-
-
-
-### explore dataset with low distance to eucalypt canopy
-
-can_dat <- 
-  euc_ana %>%
-  filter(distance_to_Eucalypt_canopy_m == 0) %>%
-  select(SurveyID, Season, Property, Property_season, quadrat_no,
-         fit_vars2, seedlings_all)
-
-can_dat <- 
-  can_dat %>%
-  gather(fit_vars2, 
-         key = "variable", value = "value") %>%
-  split(., .$variable)
-
-names(can_dat)
-
-ggplot(data = can_dat[[11]],
-       mapping = aes(x = value, 
-                     y = seedlings_all,
-                     colour = Property)) +
-  geom_point() +
-  geom_smooth(method = "lm", se = FALSE) +
-  #facet_wrap(~Property, scales = "free") +
-  theme_classic() +
-  theme(legend.position = "none")
-
-
-### model this for properties where there was some recruitment
-
-fit_vars2 <- 
-  c("distance_to_Eucalypt_canopy_m",
-    "PET",
-    "bare_all",
-    "non_wood_plant",
-    "total_perennial_grass",
-    "ExoticAnnualGrass_cover",
-    "Litter_cover", 
-    "Euc_canopy_cover",
-    "K_perc",
-    "Th_ppm",
-    "MrVBF")
-
-recruits_prop <- 
-  euc_ana %>%
-  group_by(Property) %>%
-  summarise(sum = sum(seedlings_all) ) %>%
-  ungroup() %>%
-  filter(sum > 0) %>%
-  pull(Property)
-
-recruits_prop %>%
-  length()
-
-euc_ana$Property %>%
-  unique() %>%
-  length()
-
-scale_this <- function(x){
-  (x - mean(x, na.rm = TRUE)) / sd(x, na.rm=TRUE)
-}
-
-rec_dat <- 
-  euc_ana %>%
-  filter(Property %in% recruits_prop) %>%
-  filter(distance_to_Eucalypt_canopy_m == 0) %>%
-  select(SurveyID, Season, Property, Property_season, quadrat_no,
-         fit_vars2, seedlings_all, seedling_y_n) %>%
-  mutate_at(vars(fit_vars2),
-            ~ scale_this(.))
-
-lm_rec1 <- 
-  lme4::glmer.nb(seedlings_all ~ 
-                   total_perennial_grass +
-                   Litter_cover +
-                   ExoticAnnualGrass_cover +
-                   (1|Property) +
-                   (total_perennial_grass+0|Property),
-                 data = rec_dat, verbose = TRUE)
-
-overdisp_fun(lm_rec1)
-
-ggplot(data = rec_dat %>%
-         mutate(pred = predict(lm_rec1, type = "response")),
-       mapping = aes(x = total_perennial_grass, 
-                     y = seedling_y_n)) +
-  geom_point() +
-  geom_point(mapping = aes(y = pred), colour = "red") +
-  facet_wrap(~Property, scale = "free") +
-  theme_classic()
-
-piecewiseSEM::rsquared(lm_rec1)
 
