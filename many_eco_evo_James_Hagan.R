@@ -778,11 +778,21 @@ ggplot(data = mean_dat,
   geom_point()
 
 # check if I'm missing any important variables by correlating exotic proportion with other explanatory variables
+mean_dat %>%
+  gather("MrVBF_mean", "K_perc_mean", "Th_ppm_mean", "U_ppm_mean", "shrub_mean",
+         "Euc_canopy_cover_mean",
+         key = "pred", val = "value") %>%
+  ggplot(data = .,
+         mapping = aes(x = value, y = seedling_y_n_mean)) +
+  geom_point() +
+  facet_wrap(~pred, scales = "free")
+
+# other variables don't seem very important
 
 
+### fit a standard linear model (Gaussian errors) to these data 
 
-### fit a linear model to these data
-
+# set up a function for the asinTransform
 asinTransform <- function(p) { asin(sqrt(p)) }
 
 # examine how the asin transformation affects the distribution
@@ -799,7 +809,8 @@ mean_dat %>%
   geom_histogram() +
   facet_wrap(~var, scales = "free")
 
-# square root transform exotic_grass_mean
+# square root transform exotic_grass_mean because it is a bit skewed
+
 
 # set up models
 
@@ -817,8 +828,11 @@ exp_vars <- list(c("exotic_proportion_mean", cons_vars),
 # set up a data frame to model with the transformed variables
 mod_dat <- 
   mean_dat %>%
-  mutate(seedling_y_n_mean = asinTransform(seedling_y_n_mean),
+  mutate(seedling_y_n_mean_as = asinTransform(seedling_y_n_mean),
          exotic_grass_mean = sqrt(exotic_grass_mean))
+
+
+# Guassian errors
 
 # create output lists
 cof_out <- vector("list", length = length(exp_vars))
@@ -827,7 +841,7 @@ diag_out <- vector("list", length = length(exp_vars))
 # run a loop to fit the different models
 for (i in seq_along( 1:length(exp_vars) ) ) {
   
-  lm_exp <- lm(reformulate(exp_vars[[i]], "seedling_y_n_mean"), data = mod_dat)
+  lm_exp <- lm(reformulate(exp_vars[[i]], "seedling_y_n_mean_as"), data = mod_dat)
   cof_out[[i]] <- tidy(lm_exp)
   diag_out[[i]] <- glance(lm_exp)
 }
@@ -838,30 +852,62 @@ diag_out %>%
 cof_out %>%
   bind_rows(.id = "model")
 
-# fit a linear model to these data
-lm_mean_1 <- lm(asinTransform(mean_dat$seedling_y_n_mean) ~ 
-                 exotic_proportion_mean +
-                 Litter_cover_mean +
-                 distance_to_Eucalypt_canopy_m_mean +
-                 annual_precipitation_mean, data = mean_dat)
 
-# check the model assumptions
-plot(lm_mean_1, 1)
+# binomial errors
 
-residuals(lm_mean_1) %>% 
-  hist()
+# create output lists
+lm_out_glm <- vector("list", length = length(exp_vars))
+cof_out_glm <- vector("list", length = length(exp_vars))
+diag_out_glm <- vector("list", length = length(exp_vars))
 
-# check for variance inflation
-car::vif(lm_mean_1)
+# run a loop to fit the different models
+for (i in seq_along( 1:length(exp_vars) ) ) {
+  
+  lm_out_glm[[i]] <- glm(reformulate(exp_vars[[i]], "seedling_y_n_mean"), 
+                data = mod_dat,
+                family = quasibinomial)
+  
+  cof_out_glm[[i]] <- tidy(lm_out_glm[[i]])
+  
+  diag_out_glm[[i]] <- 
+    bind_cols(glance(lm_out_glm[[i]]), piecewiseSEM::rsquared(lm_out_glm[[i]]) ) %>%
+    mutate(overdisp = lm_out_glm[[i]]$deviance/lm_out_glm[[i]]$df.residual)
+  
+}
 
-# check model coefficients
-summary(lm_mean_1)
+# check model assumptions
+lapply(lm_out_glm, function(x) { 
+  
+  mod_dat %>%
+    mutate(resids = residuals(x, type = "deviance"),
+           preds = predict(x, type = "response")) %>%
+    gather(unique(unlist(exp_vars)), preds,
+           key = "explan", value = "var") %>%
+    ggplot(data = .,
+           mapping = aes(x = var, y = resids)) +
+    geom_point() +
+    geom_smooth(se = FALSE) +
+    facet_wrap(~explan, scales = "free") +
+    theme_classic()
+  
+  })
+
+
+piecewiseSEM::rsquared(lm_out_glm[[4]])
+
+summary(lm_out_glm[[1]])
+
+diag_out_glm %>%
+  bind_rows(.id = "model")
+
+cof_out_glm %>%
+  bind_rows(.id = "model")
 
 # plot the predictions
 ggplot(data = mean_dat %>%
-         mutate(pred = predict(lm_mean_1)),
+         mutate(pred = predict(lm_out_glm[[1]], type = "response")),
        mapping = aes(x = exotic_proportion_mean, 
-                     y = asinTransform(mean_dat$seedling_y_n_mean))) +
+                     y = seedling_y_n_mean)) +
   geom_point() +
   geom_point(mapping = aes(y = pred), colour = "red") +
   theme_classic()
