@@ -609,6 +609,7 @@ pair_dat_mod[[3]] %>%
 
 
 
+
 ### "sites range from native dominated to more exotic dominated"
 
 ### therefore, there should be variation at the property-scale
@@ -620,7 +621,7 @@ names(euc_ana)
 fit_vars <- 
   c("MrVBF",
     "K_perc", "Th_ppm", "U_ppm",
-    "PET",
+    "annual_precipitation",
     "bare_all", "Rock_cover",
     "native_perennial_grass", "NativePerennialHerb_cover", "native_non_woody",
     "Litter_cover",
@@ -670,124 +671,197 @@ mean_dat %>%
             sd = sd(egrass_prop))
 
 
-# do sites vary in their overall numbers of exotics and natives?
+# characterise the gradient:
+
+# litter cover
 ggplot(data = mean_dat,
-       mapping = aes(x = exotic_non_woody_mean, y = native_non_woody_mean)) +
+       mapping = aes(x = annual_precipitation_mean, y = Litter_cover_mean)) +
+  geom_point()
+
+cor.test(mean_dat$annual_precipitation_mean, mean_dat$Litter_cover_mean,
+         method = "spearman")
+
+# clear increase in litter cover along the rainfall gradient
+
+# exotic plant cover
+ggplot(data = mean_dat,
+       mapping = aes(x = annual_precipitation_mean, y = exotic_non_woody_mean)) +
+  geom_point()
+
+cor.test(mean_dat$annual_precipitation_mean, mean_dat$exotic_non_woody_mean,
+         method = "spearman")
+
+# non-woody exotic plant cover increases with precipitation
+
+# these increases are due to increases in both exotic grass cover and exotic herb cover
+ggplot(data = mean_dat,
+       mapping = aes(x = annual_precipitation_mean, y = exotic_grass_mean)) +
   geom_point()
 
 ggplot(data = mean_dat,
-       mapping = aes(x = PET_mean, y = exotic_proportion_mean)) +
+       mapping = aes(x = annual_precipitation_mean, y = exotic_herbs_mean)) +
+  geom_point()
+
+# native plant cover
+ggplot(data = mean_dat,
+       mapping = aes(x = annual_precipitation_mean, y = native_non_woody_mean)) +
   geom_point()
 
 ggplot(data = mean_dat,
-       mapping = aes(x = PET_mean, y = Litter_cover_mean)) +
+       mapping = aes(x = annual_precipitation_mean, y = native_perennial_grass_mean)) +
+  geom_point()
+
+# native non-woody plant cover also increases markedly along the rainfall gradient
+
+# total grass cover
+ggplot(data = mean_dat,
+       mapping = aes(x = annual_precipitation_mean, y = total_grass_mean)) +
+  geom_point()
+
+cor.test(mean_dat$annual_precipitation_mean, mean_dat$total_grass_mean,
+         method = "spearman")
+
+# do exotics dominate at wetter or drier sites?
+ggplot(data = mean_dat,
+       mapping = aes(x = annual_precipitation_mean, y = exotic_proportion_mean)) +
+  geom_point()
+
+cor.test(mean_dat$annual_precipitation_mean, mean_dat$exotic_proportion_mean,
+         method = "spearman")
+
+# sites vary in how dominated they are by exotics but this isn't linked to rainfall
+
+# how do these cover variables relate to seedling recruitment
+ggplot(data = mean_dat,
+       mapping = aes(x = exotic_proportion_mean, y = seedling_y_n_mean)) +
+  geom_point()
+
+cor.test(mean_dat$exotic_proportion_mean, mean_dat$seedling_y_n_mean,
+         method = "spearman")
+
+ggplot(data = mean_dat,
+       mapping = aes(x = total_grass_mean, y = seedling_y_n_mean)) +
   geom_point()
 
 ggplot(data = mean_dat,
-       mapping = aes(x = PET_mean, y = bare_all_mean)) +
+       mapping = aes(x = exotic_grass_mean, y = seedling_y_n_mean)) +
   geom_point()
 
 ggplot(data = mean_dat,
-       mapping = aes(x = PET_mean, y = exotic_grass_mean)) +
+       mapping = aes(x = native_perennial_grass_mean, y = seedling_y_n_mean)) +
   geom_point()
 
 ggplot(data = mean_dat,
-       mapping = aes(x = PET_mean, y = native_perennial_grass_mean)) +
+       mapping = aes(x = annual_precipitation_mean, y = seedling_y_n_mean)) +
   geom_point()
 
 ggplot(data = mean_dat,
-       mapping = aes(x = PET_mean, y = total_grass_mean)) +
+       mapping = aes(x = distance_to_Eucalypt_canopy_m_mean, y = seedling_y_n_mean)) +
+  geom_point()
+
+
+# which variables are correlated with exotic proportion?
+ggplot(data = mean_dat,
+       mapping = aes(x = exotic_proportion_mean, y = total_grass_mean)) +
   geom_point()
 
 ggplot(data = mean_dat,
-       mapping = aes(x = PET_mean, y = NativePerennialHerb_cover_mean)) +
+       mapping = aes(x = exotic_proportion_mean, y = native_perennial_grass_mean)) +
   geom_point()
 
 ggplot(data = mean_dat,
-       mapping = aes(x = PET_mean, y = total_non_woody_mean)) +
+       mapping = aes(x = exotic_proportion_mean, y = exotic_grass_mean)) +
   geom_point()
-
-
-# exotic annuals and exotic herbs are heavily correlated
 
 ggplot(data = mean_dat,
-       mapping = aes(x = exotic_herbs_mean, y = ExoticAnnualGrass_cover_mean)) +
+       mapping = aes(x = exotic_proportion_mean, y = ExoticAnnualGrass_cover_mean)) +
   geom_point()
 
-cor(x = mean_dat$ExoticAnnualGrass_cover, y = mean_dat$exotic_herbs)
+# check if I'm missing any important variables by correlating exotic proportion with other explanatory variables
 
-# are the exotic herbs correlated with PET?
-ggplot(data = mean_dat,
-       mapping = aes(x = PET_mean, y = exotic_all_mean)) +
-  geom_point()
 
-cor(x = mean_dat$exotic_all_mean, y = mean_dat$PET_mean, method = "spearman")
-cor.test(x = mean_dat$exotic_all_mean, y = mean_dat$PET_mean, method = "spearman")
 
-# examine relationship with all seedlings
-ggplot(data = mean_dat,
-       mapping = aes(x = ExoticAnnualGrass_cover_mean, y = seedlings_all_mean,
-                     colour = PET_mean, size = distance_to_Eucalypt_canopy_m_mean)) +
-  geom_point()
+### fit a linear model to these data
 
+asinTransform <- function(p) { asin(sqrt(p)) }
+
+# examine how the asin transformation affects the distribution
+hist(asinTransform(mean_dat$seedling_y_n_mean))
+
+# how are the other three variables distributed?
 mean_dat %>%
-  filter(seedlings_all_mean == 0,
-         ExoticAnnualGrass_cover_mean < 10) %>%
-  View()
+  select(exotic_proportion_mean, Litter_cover_mean, annual_precipitation_mean,
+         distance_to_Eucalypt_canopy_m_mean, total_grass_mean, exotic_grass_mean,
+         native_perennial_grass_mean) %>%
+  gather(key = "var", value = "val") %>%
+  ggplot(data = .,
+         mapping = aes(x = (val) )) +
+  geom_histogram() +
+  facet_wrap(~var, scales = "free")
 
-ggplot(data = mean_dat,
-       mapping = aes(x = exotic_all_mean, y = seedlings_all_mean,
-                     colour = PET_mean, size = distance_to_Eucalypt_canopy_m_mean)) +
-  geom_point()
+# square root transform exotic_grass_mean
 
-# what happens at sites with low recruitment on the left hand spectrum?
-ggplot(data = mean_dat,
-       mapping = aes(x = exotic_all_mean, y = seedlings_all_mean,
-                     colour = PET_mean, size = distance_to_Eucalypt_canopy_m_mean)) +
-  geom_point()
+# set up models
 
-# 
-ggplot(data = mean_dat,
-       mapping = aes(x = exotic_all_mean, y = seedlings_all_mean,
-                     colour = PET_mean, size = Litter_cover_mean)) +
-  geom_point()
+# variables to conserve in all models (i.e. moderators or covariates)
+cons_vars <- c( "Litter_cover_mean", 
+                "distance_to_Eucalypt_canopy_m_mean", 
+                "annual_precipitation_mean")
 
+# set up a list of explanatory variables for the four models
+exp_vars <- list(c("exotic_proportion_mean", cons_vars),
+                 c("total_grass_mean", cons_vars),
+                 c("exotic_grass_mean", cons_vars),
+                 c("native_perennial_grass_mean", cons_vars))
 
+# set up a data frame to model with the transformed variables
+mod_dat <- 
+  mean_dat %>%
+  mutate(seedling_y_n_mean = asinTransform(seedling_y_n_mean),
+         exotic_grass_mean = sqrt(exotic_grass_mean))
 
-# what is the relationship between native perennial grasses?
-ggplot(data = mean_dat,
-       mapping = aes(x = native_perennial_grass_mean, y = seedlings_all_mean)) +
-  geom_point()
+# create output lists
+cof_out <- vector("list", length = length(exp_vars))
+diag_out <- vector("list", length = length(exp_vars))
 
+# run a loop to fit the different models
+for (i in seq_along( 1:length(exp_vars) ) ) {
+  
+  lm_exp <- lm(reformulate(exp_vars[[i]], "seedling_y_n_mean"), data = mod_dat)
+  cof_out[[i]] <- tidy(lm_exp)
+  diag_out[[i]] <- glance(lm_exp)
+}
 
-qr_1 <- quantreg::rq(formula = seedlings_all_mean ~ exotic_all_mean,
-             data = mean_dat, tau = 0.95)
+diag_out %>%
+  bind_rows(.id = "model")
 
-summary(qr_1)
+cof_out %>%
+  bind_rows(.id = "model")
 
 # fit a linear model to these data
-lm_mean1 <- lm(log10(1+seedlings_all_mean) ~ 
-                 exotic_annual_mean +
+lm_mean_1 <- lm(asinTransform(mean_dat$seedling_y_n_mean) ~ 
+                 exotic_proportion_mean +
                  Litter_cover_mean +
-                 sqrt(distance_to_Eucalypt_canopy_m_mean), data = mean_dat)
+                 distance_to_Eucalypt_canopy_m_mean +
+                 annual_precipitation_mean, data = mean_dat)
 
 # check the model assumptions
-plot(lm_mean1, 1)
+plot(lm_mean_1, 1)
 
-residuals(lm_mean1) %>% 
+residuals(lm_mean_1) %>% 
   hist()
 
 # check for variance inflation
-car::vif(lm_mean1)
+car::vif(lm_mean_1)
 
 # check model coefficients
-summary(lm_mean1)
+summary(lm_mean_1)
 
 # plot the predictions
 ggplot(data = mean_dat %>%
-         mutate(pred = predict(lm_mean1)),
-       mapping = aes(x = sqrt(ExoticAnnualGrass_cover), 
-                     y = log10(1+mean_dat$seedlings_all))) +
+         mutate(pred = predict(lm_mean_1)),
+       mapping = aes(x = exotic_proportion_mean, 
+                     y = asinTransform(mean_dat$seedling_y_n_mean))) +
   geom_point() +
   geom_point(mapping = aes(y = pred), colour = "red") +
   theme_classic()
