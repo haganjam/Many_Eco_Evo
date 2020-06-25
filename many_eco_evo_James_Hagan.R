@@ -964,12 +964,7 @@ mean_dat$Property %>% unique()
 
 
 
-### proportion at each season at each site
-
-# negative binomial is not a bad fit but first should fit a normal Poisson
-
-# however, there is a lot of unexplained variance when canopy cover is very low
-# I want to see which variables explain this variation before modelling further
+# paired analysis for well-sampled sites
 
 fit_vars2 <- 
   c("MrVBF",
@@ -1002,13 +997,12 @@ well_samps <-
   filter(`0` >= 2, `1` >= 2) %>%
   pull(Property_season)
 
-
 # explore these data
 euc_ana %>%
   filter(Property_season %in% well_samps) %>%
   gather("exotic_herbs", "exotic_grass", "Litter_cover", 
          "distance_to_Eucalypt_canopy_m",
-         "native_perennial_grass",
+         "native_perennial_grass", "total_non_woody",
          key = "variable", value = "val") %>%
   split(., .$variable) %>%
   lapply(., function(x) { 
@@ -1023,10 +1017,64 @@ euc_ana %>%
     
     } )
 
-# random slopes
-# - 
-  
+# get site-year combinations where seedlings were observed
+recruit_sites
 
+g_vars <- c("total_perennial_grass",
+            "ExoticAnnualGrass_cover",
+            "native_perennial_grass")
+
+pair_dat <- 
+  euc_ana %>%
+  filter(Property_season %in% recruit_sites) %>%
+  group_by(Property, Season, Property_season, seedling_y_n) %>%
+  summarise_at(vars(g_vars),
+               list(m = ~ mean(., na.rm = TRUE),
+                    n = ~ n()) ) %>%
+  ungroup() %>%
+  group_by(Property, Season, Property_season) %>%
+  mutate(n = n()) %>%
+  filter(n > 1) %>%
+  summarise_at(vars(paste(g_vars, c("m"), sep = "_")),
+               ~ diff(., na.rm = TRUE)) %>%
+  ungroup() %>%
+  gather(paste(g_vars, c("m"), sep = "_"),
+         key = "grass_variable", value = "cover")
+
+euc_ana$Property_season %>%
+  unique() %>%
+  length()
+
+pair_dat$Property_season %>%
+  unique() %>%
+  length()
+
+# plot out these differences
+
+ggplot(data = pair_dat, 
+       mapping = aes(x = cover, fill = grass_variable)) +
+  geom_histogram() +
+  geom_vline(xintercept = 0) +
+  facet_wrap(~Season, scales = "free") +
+  theme_classic()
+
+split(pair_dat, pair_dat$grass_variable) %>%
+  lapply(., function(x) { t.test(x = x$cover, alternative = c("two.sided"), mu = 0) })
+
+
+
+
+
+
+
+
+
+# random slopes
+# - native perennial grass
+# - litter cover
+# - exotic herbs
+# - exotic grass
+  
 scale_this <- 
   function(x){
   (x - mean(x, na.rm = TRUE)) / sd(x, na.rm=TRUE)
@@ -1040,48 +1088,7 @@ full_dat <-
   ungroup()
 
   
-lm_full_1 <- 
-  glmer(seedling_y_n ~ 
-          exotic_grass + native_perennial_grass + exotic_herbs + Litter_cover +
-          (1|Property_season) + (exotic_grass+0|Property_season) + 
-          (native_perennial_grass+0|Property_season) + (exotic_herbs+0|Property_season) +
-          (Litter_cover+0|Property_season),
-        data = full_dat, family = binomial)
 
-
-lm_full_1
-
-car::vif(lm_full_1)
-
-piecewiseSEM::rsquared(lm_full_1)
-
-drop1(lm_full_1, test = "Chisq")
-
-lm_full1 <- 
-  lme4::glmer.nb(seedlings_all ~ 
-             (ExoticAnnualGrass_cover) +
-             (total_perennial_grass) +
-             Litter_cover +
-             PET +
-             Season +
-             Euc_canopy_cover:(distance_to_Eucalypt_canopy_m) +
-             (1|Property),
-           data = full_dat %>%
-             filter(SurveyID != 44), verbose = TRUE)
-
-overdisp_fun(lm_full1)
-
-ggplot(data = full_dat %>%
-         filter(SurveyID != 44) %>%
-         mutate(pred = predict(lm_full1, type = "response")),
-       mapping = aes(x = distance_to_Eucalypt_canopy_m, 
-                     y = seedlings_all)) +
-  geom_point() +
-  geom_point(mapping = aes(y = pred), colour = "red") +
-  facet_wrap(~Property, scales = "free") +
-  theme_classic()
-
-piecewiseSEM::rsquared(lm_full1)
 
 
 ### explore dataset with low distance to eucalypt canopy
