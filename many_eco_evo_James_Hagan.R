@@ -286,14 +286,14 @@ euc_ana <-
 
 ### create new analysis variables
 
-# (1) sum-up the three seedling size classes
+# sum-up the three seedling size classes
 
 euc_ana$seedlings_all <- 
   euc_ana %>%
   select(all_of(seed_vars) ) %>%
   rowSums()
 
-# (2) sum-up the'bare ground' type variables:
+# sum-up the'bare ground' type variables:
 # BareGround_cover
 # MossLichen_cover
 
@@ -302,45 +302,74 @@ euc_ana$bare_all <-
   select(BareGround_cover, MossLichen_cover) %>%
   rowSums()
 
-# (3) create an exotic annual plant cover variable (exotic grass and herbs)
+
+# exotic plant variables
+
+# create an exotic annual plant cover variable (exotic grass and herbs)
 euc_ana$exotic_annual <- 
   euc_ana %>%
-  select(contains("ExoticAnnual")) %>%
+  select("ExoticAnnualGrass_cover", "ExoticAnnualHerb_cover") %>%
   rowSums()
 
-# (4) create perennial native grass/graminoid variable
+# create an exotic grass cover variable
+euc_ana$exotic_grass <- 
+  euc_ana %>%
+  select("ExoticAnnualGrass_cover", "ExoticPerennialGrass_cover") %>%
+  rowSums()
+
+# create an exotic herb cover variable
+euc_ana$exotic_herbs <- 
+  euc_ana %>%
+  select("ExoticAnnualHerb_cover", "ExoticPerennialHerb_cover") %>%
+  rowSums()
+
+# create an exotic non-woody plant cover variable
+euc_ana$exotic_non_woody <- 
+  euc_ana %>%
+  select("ExoticAnnualHerb_cover", "ExoticPerennialHerb_cover",
+         "ExoticAnnualGrass_cover", "ExoticPerennialGrass_cover") %>%
+  rowSums()
+
+
+# native plant variables
+
+# create perennial native grass/graminoid variable
 euc_ana$native_perennial_grass <- 
   euc_ana %>%
-  select(contains("NativePerennialGr")) %>%
+  select("NativePerennialGrass_cover", "NativePerennialGraminoid_cover") %>%
   rowSums()
 
-# proportion of graminoids is very low
-euc_ana$NativePerennialGraminoid_cover %>%
-  summary()
-
-# proportion of exotic perennial to native perennial
-euc_ana$ExoticPerennialGrass_cover %>%
-  summary()
-
-(euc_ana$ExoticPerennialGrass_cover/euc_ana$native_perennial_grass) %>%
-  summary()
-
-
-# (5) create a total perennial grass cover variable
-euc_ana$total_perennial_grass <- 
+# create a total native non-woody plant variable
+euc_ana$native_non_woody <- 
   euc_ana %>%
-  select(contains("PerennialGr")) %>%
+  select("NativePerennialGrass_cover", "NativePerennialGraminoid_cover",
+         "NativePerennialFern_cover", "NativePerennialHerb_cover") %>%
   rowSums()
 
 
-# (6) create a perennial herb cover variable
-euc_ana$perennial_herb <- 
+# composite plant variables
+
+# create a total grass variable
+
+euc_ana$total_grass <- 
   euc_ana %>%
-  select(contains("PerennialHerb")) %>%
+  select("NativePerennialGrass_cover", "NativePerennialGraminoid_cover",
+         "ExoticAnnualGrass_cover", "ExoticPerennialGrass_cover"
+  ) %>%
+  rowSums()
+
+# create a total non-woody plant variable
+euc_ana$total_non_woody <- 
+  euc_ana %>%
+  select("NativePerennialGrass_cover", "NativePerennialGraminoid_cover",
+         "NativePerennialFern_cover", "NativePerennialHerb_cover",
+         "ExoticAnnualHerb_cover", "ExoticPerennialHerb_cover",
+         "ExoticAnnualGrass_cover", "ExoticPerennialGrass_cover"
+         ) %>%
   rowSums()
 
 
-# (7) create a shrub cover variable
+# create a shrub cover variable
 euc_ana$shrub <- 
   euc_ana %>%
   select(contains("Shrub")) %>%
@@ -350,76 +379,45 @@ euc_ana$shrub <-
 euc_ana$ExoticShrub_cover %>%
   max()
 
-
-# (8) create an exotic grass cover variable
-euc_ana$exotic_grass <- 
-  euc_ana %>%
-  select(intersect(contains("Exotic"), contains("Grass"))) %>%
-  rowSums()
-  
-
-# (9) create a property-season combination variables
+# create a property-season combination variables
 euc_ana <- 
   euc_ana %>%
   mutate(Property_season = paste(Property, Season, sep = "_"))
 
 
-# (10) create a seedling_y_n variables for all seedlings
+# create a seedling_y_n variables for all seedlings
 euc_ana <- 
   euc_ana %>%
   mutate(seedling_y_n = if_else(seedlings_all > 0, 1, 0))
 
 
-# (11) create a young seedling variable
+# create a young seedling variable
 euc_ana <- 
   euc_ana %>%
   mutate(young_seedling_y_n = if_else(euc_sdlgs0_50cm > 0, 1, 0))
 
-
-# (12) create a total cover variable
+# create a total plant cover variable
 euc_ana$total_cover <- 
   euc_ana %>%
-  select(cov_vars) %>%
+  select("ExoticAnnualGrass_cover", "ExoticAnnualHerb_cover",      
+         "ExoticPerennialHerb_cover", "ExoticPerennialGrass_cover", 
+         "ExoticShrub_cover", "NativePerennialFern_cover",
+         "NativePerennialGrass_cover", "NativePerennialHerb_cover",    
+         "NativePerennialGraminoid_cover","NativeShrub_cover") %>%
   rowSums()
 
-# check the seedlings all variable
-euc_ana$seedlings_all %>%
-  range()
-
-
-# (14) create a native herbaceous cover variable
-euc_ana$native_herbs <- 
+# create a proportion exotic variable (of non woody plants)
+euc_ana <- 
   euc_ana %>%
-  select(c("NativePerennialGrass_cover", "NativePerennialGrass_cover", "NativePerennialHerb_cover")) %>%
-  rowSums()
-
-
-# (15) create an exotic herb variable
-euc_ana$exotic_herbs <- 
-  euc_ana %>%
-  select(c("ExoticAnnualGrass_cover", "ExoticAnnualHerb_cover", 
-           "ExoticPerennialHerb_cover", "ExoticPerennialGrass_cover")) %>%
-  rowSums()
-
-
-# (16) create a total exotic cover variable
-euc_ana$exotic_all <- 
-  euc_ana %>%
-  select(c("ExoticAnnualGrass_cover", "ExoticAnnualHerb_cover", 
-           "ExoticPerennialHerb_cover", "ExoticPerennialGrass_cover",
-           "ExoticShrub_cover")) %>%
-  rowSums()
-
+  mutate(exotic_proportion = (exotic_non_woody/total_non_woody)*100)
+  
 
 # check the seedling outlier
 euc_ana %>%
-  filter(seedlings_all > 80) %>%
-  View()
+  filter(seedlings_all > 80)
 
 # surveyID = 44 has a very high number of small seedlings
 
-
-### examine the seedlings variables because some plots do not have seedlings
 
 # create a list of property season combinations where recruitment occurred
 recruit_sites <- 
@@ -445,29 +443,45 @@ euc_ana <-
          "Property_season", 
          "MrVBF",
          "K_perc", "Th_ppm", "U_ppm",
-         "PET",
-         "bare_all", 
-         "native_perennial_grass", "native_herbs",
+         "annual_precipitation",
+         "bare_all", "Rock_cover",
+         "native_perennial_grass", "NativePerennialHerb_cover", "native_non_woody",
          "Litter_cover",
          "ExoticAnnualGrass_cover", "ExoticAnnualHerb_cover", "exotic_annual",
          "ExoticPerennialHerb_cover", "ExoticPerennialGrass_cover",
-         "exotic_herbs", "exotic_all",
-         "total_perennial_grass", "perennial_herb",
+         "exotic_herbs", "exotic_grass", "exotic_non_woody",
+         "total_grass", "total_non_woody",
          "Litter_cover",
          "shrub",
-         "total_cover",
+         "total_cover", 
+         "exotic_proportion",
          "Euc_canopy_cover", "distance_to_Eucalypt_canopy_m",
          "euc_sdlgs0_50cm", "euc_sdlgs_50cm_2m", "euc_sdlgs_2m",
          "seedlings_all", "seedling_y_n", "young_seedling_y_n")
 
 
-### Summary statistics
+### summary statistics
 
-((euc_ana %>%
-  select(bare_all, non_wood_plant, total_perennial_grass,
-         ExoticAnnualGrass_cover, Litter_cover) %>%
-  rowSums()/euc_ana$total_cover)*100) %>%
-  summary()
+# how much do different cover variables account for?
+
+covs <- c("exotic_grass",
+          "native_perennial_grass",
+          "exotic_herbs")
+
+prop_cov <- 
+  euc_ana %>%
+  gather(all_of(covs), key = "var", value = "cov") %>%
+  group_by(SurveyID) %>%
+  summarise(total_cover = mean(total_cover, na.rm = TRUE),
+            cov = sum(cov, na.rm = TRUE) ) %>%
+  mutate(prop = (cov/total_cover)*100)
+
+summary(prop_cov)
+hist(prop_cov$prop)
+
+prop_cov %>% 
+  filter(prop < 80) %>%
+  View()
 
 # important summary statistics to report
 
@@ -504,9 +518,9 @@ euc_ana %>%
 
 
 
-### Analysis 1
+### Analysis 1 (# redo with the new variables!)
 
-### Paired analysis: recruitment vs. no recruitment at the site scale
+### Paired analysis: recruitment vs. no recruitment at the site scale (# needs redoing)
 
 # get site-year combinations where seedlings were observed
 recruit_sites
@@ -607,55 +621,97 @@ fit_vars <-
   c("MrVBF",
     "K_perc", "Th_ppm", "U_ppm",
     "PET",
-    "bare_all", 
-    "native_perennial_grass", "native_herbs",
+    "bare_all", "Rock_cover",
+    "native_perennial_grass", "NativePerennialHerb_cover", "native_non_woody",
     "Litter_cover",
     "ExoticAnnualGrass_cover", "ExoticAnnualHerb_cover", "exotic_annual",
     "ExoticPerennialHerb_cover", "ExoticPerennialGrass_cover",
-    "exotic_herbs", "exotic_all",
-    "total_perennial_grass", "perennial_herb",
+    "exotic_herbs", "exotic_grass", "exotic_non_woody",
+    "total_grass", "total_non_woody",
     "Litter_cover",
     "shrub",
-    "total_cover",
+    "total_cover", 
+    "exotic_proportion",
     "Euc_canopy_cover", "distance_to_Eucalypt_canopy_m",
     "euc_sdlgs0_50cm", "euc_sdlgs_50cm_2m", "euc_sdlgs_2m",
     "seedlings_all", "seedling_y_n", "young_seedling_y_n")
 
+# three cover variables account for the vast majority of plant cover
+covs
+
+# in addition, bare_all and Litter_cover are probably also important
+
+# seedling variables: 
+# - mean seedlings across plots
+# - proportion of plots with seedlings
+
 mean_dat <- 
   euc_ana %>%
   group_by(Property, Season) %>%
+  mutate(seedling_y_n = sum(seedling_y_n, na.rm = TRUE)/n()) %>%
   summarise_at(vars(fit_vars),
                ~ mean(., na.rm = TRUE)) %>%
   ungroup() %>%
   group_by(Property) %>%
-  summarise_at(vars(fit_vars), list( ~ mean(., na.rm = TRUE),
+  summarise_at(vars(all_of(fit_vars)), list( ~ mean(., na.rm = TRUE),
                        ~ sd(., na.rm = TRUE) ) )
 
 # check the range of mean exotic cover
-range(mean_dat$exotic_all_mean)
+range(mean_dat$exotic_proportion_mean)
 
 filter(mean_dat, 
-       exotic_all_mean == max(exotic_all_mean) |
-       exotic_all_mean == min(exotic_all_mean)) %>%
-  select(contains("exotic_all"))
+       exotic_proportion_mean == max(exotic_proportion_mean) |
+         exotic_proportion_mean == min(exotic_proportion_mean)) %>%
+  select(contains("exotic_proportion"))
 
 mean_dat %>%
-  mutate(egrass_prop = ExoticAnnualGrass_cover_mean/exotic_all_mean) %>%
+  mutate(egrass_prop = ExoticAnnualGrass_cover_mean/exotic_non_woody_mean) %>%
   summarise(m = mean(egrass_prop),
             sd = sd(egrass_prop))
 
 
 # do sites vary in their overall numbers of exotics and natives?
 ggplot(data = mean_dat,
-       mapping = aes(x = exotic_herbs_mean, y = exotic_annual_mean)) +
+       mapping = aes(x = exotic_non_woody_mean, y = native_non_woody_mean)) +
   geom_point()
 
-cor(x = mean_dat$exotic_annual, y = mean_dat$exotic_herbs)
+ggplot(data = mean_dat,
+       mapping = aes(x = PET_mean, y = exotic_proportion_mean)) +
+  geom_point()
+
+ggplot(data = mean_dat,
+       mapping = aes(x = PET_mean, y = Litter_cover_mean)) +
+  geom_point()
+
+ggplot(data = mean_dat,
+       mapping = aes(x = PET_mean, y = bare_all_mean)) +
+  geom_point()
+
+ggplot(data = mean_dat,
+       mapping = aes(x = PET_mean, y = exotic_grass_mean)) +
+  geom_point()
+
+ggplot(data = mean_dat,
+       mapping = aes(x = PET_mean, y = native_perennial_grass_mean)) +
+  geom_point()
+
+ggplot(data = mean_dat,
+       mapping = aes(x = PET_mean, y = total_grass_mean)) +
+  geom_point()
+
+ggplot(data = mean_dat,
+       mapping = aes(x = PET_mean, y = NativePerennialHerb_cover_mean)) +
+  geom_point()
+
+ggplot(data = mean_dat,
+       mapping = aes(x = PET_mean, y = total_non_woody_mean)) +
+  geom_point()
+
 
 # exotic annuals and exotic herbs are heavily correlated
 
 ggplot(data = mean_dat,
-       mapping = aes(x = exotic_herbs, y = ExoticAnnualGrass_cover)) +
+       mapping = aes(x = exotic_herbs_mean, y = ExoticAnnualGrass_cover_mean)) +
   geom_point()
 
 cor(x = mean_dat$ExoticAnnualGrass_cover, y = mean_dat$exotic_herbs)
