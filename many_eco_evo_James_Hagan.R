@@ -452,8 +452,6 @@ euc_ana %>%
 
 # surveyID = 44 has a very high number of small seedlings
 
-
-
 # which cover variables are important?
 
 # reduce the euc_ana variables
@@ -480,6 +478,7 @@ euc_ana <-
          "Euc_canopy_cover", "distance_to_Eucalypt_canopy_m",
          "euc_sdlgs0_50cm", "euc_sdlgs_50cm_2m", "euc_sdlgs_2m",
          "seedlings_all", "seedling_y_n", "young_seedling_y_n")
+
 
 
 ### summary statistics
@@ -949,8 +948,6 @@ ggplot(data = mean_dat %>%
 
 # i.e. do sites with any recruitment have different grass covers?
 
-
-
 # site-scale analysis: paired analysis for well-sampled sites
 
 fit_vars2 <- 
@@ -975,6 +972,20 @@ fit_vars2 <-
 # there are many sites without any recruitment
 # then, for sites where there is some recruitment, there is like one plot
 # let's only use 'well-sampled' sites
+
+# how many properties have any recruitment?
+euc_ana %>%
+  group_by(Property) %>%
+  summarise(n = sum(seedling_y_n, na.rm = TRUE)) %>%
+  filter(n == 0) %>%
+  pull(Property)
+
+euc_ana %>%
+  group_by(Property) %>%
+  summarise(n = sum(seedling_y_n, na.rm = TRUE)) %>%
+  filter(n >= 2) %>%
+  pull(Property) %>%
+  length()
 
 well_samps <- 
   euc_ana %>%
@@ -1006,10 +1017,16 @@ euc_ana %>%
 
 # define the variables
 g_vars <- c("native_perennial_grass",
-            "ExoticAnnualGrass_cover",
             "exotic_grass",
             "total_grass",
-            "Litter_cover")
+            "total_non_woody",
+            "Litter_cover",
+            "exotic_herbs",
+            "annual_precipitation",
+            "Euc_canopy_cover", 
+            "distance_to_Eucalypt_canopy_m")
+
+# negative values mean higher in no-recruit plots
 
 pair_dat <- 
   euc_ana %>%
@@ -1026,6 +1043,7 @@ pair_dat <-
   gather(paste(g_vars, c("m"), sep = "_"),
          key = "grass_variable", value = "cover")
 
+
 euc_ana$Property_season %>%
   unique() %>%
   length()
@@ -1034,15 +1052,94 @@ pair_dat$Property_season %>%
   unique() %>%
   length()
 
-# plot out these differences
+# create a vector of means for plotting
+pair_dat_means <- 
+  pair_dat %>%
+  group_by(grass_variable) %>%
+  summarise(cover = mean(cover, na.rm = TRUE) ) %>%
+  ungroup()
 
-ggplot(data = pair_dat, 
-       mapping = aes(x = cover, fill = grass_variable)) +
-  geom_histogram() +
-  geom_vline(xintercept = 0) +
-  facet_wrap(~grass_variable) +
-  theme_classic()
+# plot and test the grass variables
+grass_vars <- c("total_grass_m",
+                "native_perennial_grass_m",
+                "exotic_grass_m")
 
-split(pair_dat, pair_dat$grass_variable) %>%
+grass_axes <- c("total grass cover (%)",
+                "native grass cover (%)",
+                "exotic grass cover (%)")
+
+grass_out <- vector("list")
+
+for(i in seq_along(1:length(grass_vars))) {
+  
+  grass_out[[i]] <- 
+    pair_dat %>%
+    filter(grass_variable == grass_vars[i]) %>%
+    ggplot(data = ., mapping = aes(x = cover)) +
+    geom_histogram(bins = 25, alpha = 0.4) +
+    geom_vline(xintercept = 0, linetype = "dashed") +
+    geom_vline(data = filter(pair_dat_means, grass_variable == grass_vars[i]),
+               mapping = aes(xintercept = cover), colour = "red") +
+    xlab(grass_axes[i]) +
+    ylab("frequency") +
+    theme_classic()
+}
+
+p1 <- ggarrange(grass_out[[1]], grass_out[[2]], grass_out[[3]],
+          ncol = 3, labels = c("(a)", "(b)", "(c)"),
+          font.label = list(face = "plain", size = 11),
+          hjust = c(-0.2,-0.2,-0.2))
+
+ggsave(here("figures_tables/fig_3.png"), p1, dpi = 300,
+       width = 20, height = 10, units = "cm")
+
+pair_dat %>%
+  filter(grass_variable %in% grass_vars) %>%
+  split(., .$grass_variable) %>%
   lapply(., function(x) { t.test(x = x$cover, alternative = c("two.sided"), mu = 0) })
+
+
+# explore relationships between potential confounding variables
+pair_dat_explan <- 
+  euc_ana %>%
+  filter(Property_season %in% well_samps) %>%
+  group_by(Property, Season, Property_season, seedling_y_n) %>%
+  summarise_at(vars(g_vars),
+               list(m = ~ mean(., na.rm = TRUE),
+                    n = ~ n()) ) %>%
+  ungroup() %>%
+  group_by(Property, Season, Property_season) %>%
+  summarise_at(vars(paste(g_vars, c("m"), sep = "_")),
+               ~ diff(., na.rm = TRUE)) %>%
+  ungroup()
+
+View(pair_dat_explan)
+
+pair_dat_explan %>%
+  select(-Property, -Season, -Property_season) %>%
+  pairs()
+
+# test these potentially confounding variables
+conf_vars <- c("Litter_cover_m",
+                "distance_to_Eucalypt_canopy_m_m",
+                "total_non_woody_m")
+
+pair_dat %>%
+  filter(grass_variable %in% conf_vars) %>%
+  split(., .$grass_variable) %>%
+  lapply(., function(x) { t.test(x = x$cover, alternative = c("two.sided"), mu = 0) })
+
+
+# in these property-season combinations, are the plots with and without eucalypt seedlings unbalanced
+euc_ana %>%
+  filter(Property_season %in% well_samps) %>%
+  group_by(Property, Season, Property_season, seedling_y_n) %>%
+  summarise(n = n()) %>%
+  ungroup() %>%
+  group_by(Property, Season, Property_season) %>%
+  summarise(n_diff = diff(n, na.rm = TRUE)) %>%
+  ungroup() %>%
+  pull(n_diff) %>%
+  t.test(x = ., alternative = c("two.sided"), mu = 0)
+
 
