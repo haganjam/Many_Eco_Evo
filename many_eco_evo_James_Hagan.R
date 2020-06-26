@@ -759,8 +759,6 @@ mean_dat %>%
   geom_histogram() +
   facet_wrap(~var, scales = "free")
 
-# square root transform exotic_grass_mean and exotic_herbs because it is a bit skewed
-
 
 # set up models
 
@@ -776,12 +774,12 @@ exp_vars <- list(c('1'),
                  c("native_perennial_grass_mean", cons_vars),
                  c("exotic_herbs_mean", cons_vars))
 
-exp_vars <- list(c('1'),
-                 c("exotic_proportion_mean"),
-                 c("total_grass_mean"),
-                 c("exotic_grass_mean"),
-                 c("native_perennial_grass_mean"),
-                 c("exotic_herbs_mean"))
+#exp_vars <- list(c('1'),
+                 #c("exotic_proportion_mean"),
+                 #c("total_grass_mean"),
+                 #c("exotic_grass_mean"),
+                 #c("native_perennial_grass_mean"),
+                 #c("exotic_herbs_mean"))
 
 
 # set up a data frame to model with the transformed variables
@@ -864,6 +862,7 @@ pred_dat <-
   data.frame(exotic_proportion_mean = seq(24, 88, 0.5),
              annual_precipitation_mean = mean(mean_dat$annual_precipitation_mean))
 
+pred_dat$pred <- predict(lm_out_glm[[3]], pred_dat, type = "response")
 
 # plot the predictions
 ggplot(data = mean_dat %>%
@@ -876,7 +875,7 @@ ggplot(data = mean_dat %>%
                               ymax = seedling_y_n_mean + seedling_y_n_sd),
                 width = 0.1) +
   geom_line(data = pred_dat, 
-            mapping = aes(x = exotic_proportion_mean, y = predict), colour = "red") +
+            mapping = aes(x = exotic_proportion_mean, y = pred), colour = "red") +
   geom_hline(yintercept = predict(lm_out_glm[[1]], type = "response")[1]) +
   scale_colour_viridis_b() +
   ylab("proportion plots seedling") +
@@ -887,61 +886,86 @@ ggplot(data = mean_dat %>%
 # despite the low predictive power of the grass variables, they did have triangular distributions
 # we fit quantile regressions but these did not show any significant effects
 
-qm_1 <- rq(seedling_y_n_mean ~ total_grass_mean, tau = 0.9, data = mean_dat)
-summary(qm_1)
+qm_1 <- rq(seedling_y_n_mean ~ total_grass_mean, tau = 0.95, data = mean_dat)
+summary.rq(qm_1, se = "ker")
 
 pred_dat_qm_1 <- 
   data.frame(total_grass_mean = seq(min(mean_dat$total_grass_mean), 
                                     max(mean_dat$total_grass_mean), 0.5),
              annual_precipitation_mean = mean(mean_dat$annual_precipitation_mean))
 
-pred_dat_qm_1$pred <- predict(qm_1, pred_dat_qm_1, type = "response")
+pred_dat_qm_1 <- bind_cols(pred_dat_qm_1, as_tibble(predict(qm_1, pred_dat_qm_1, interval = "confidence")) )
+pred_dat_qm_1
 
-ggplot(data = mean_dat %>%
-         mutate(MAP = annual_precipitation_mean),
-       mapping = aes(x = total_grass_mean, y = seedling_y_n_mean, colour = MAP)) +
-  geom_point() +
-  geom_errorbar(mapping = aes(ymin = seedling_y_n_mean - seedling_y_n_sd,
-                              ymax = seedling_y_n_mean + seedling_y_n_sd) ) +
+p_dat_1 <- 
+  mean_dat %>%
+  mutate(MAP = annual_precipitation_mean)
+
+p_quant_1 <- 
+  ggplot() +
+  geom_ribbon(data = pred_dat_qm_1,
+              mapping = aes(x = total_grass_mean, ymin = lower, ymax = higher),
+              fill = "black", alpha = 0.1) +
   geom_line(data = pred_dat_qm_1,
-            mapping = aes(x = total_grass_mean, y = pred), colour = "red") +
+            mapping = aes(x = total_grass_mean, y = fit), colour = "black") +
+  geom_point(data = p_dat_1,
+             mapping = aes(x = total_grass_mean, y = seedling_y_n_mean, colour = MAP)) +
+  geom_errorbar(data = p_dat_1,
+                mapping = aes(x = total_grass_mean,
+                              ymin = seedling_y_n_mean - seedling_y_n_sd,
+                              ymax = seedling_y_n_mean + seedling_y_n_sd,
+                              colour = MAP) ) +
   scale_colour_viridis_b() +
   ylab("proportion plots seedling") +
   xlab("total grass cover") +
-  theme_classic()
+  theme_classic() +
+  theme(legend.position = "none")
 
 
 # exotic grass cover
 
-qm_2 <- rq(seedling_y_n_mean ~ exotic_grass_mean, tau = 0.8, 
-           data = mean_dat %>%
-             filter(exotic_grass_mean < 40))
-summary(qm_2)
+qm_2 <- rq(seedling_y_n_mean ~ exotic_grass_mean, tau = 0.95, 
+           data = mean_dat, ci = FALSE)
+summary.rq(qm_2, se = "ker")
 
 pred_dat_qm_2 <- 
   data.frame(exotic_grass_mean = seq(min(mean_dat$exotic_grass_mean), 
                                     max(mean_dat$exotic_grass_mean), 0.5),
              annual_precipitation_mean = mean(mean_dat$annual_precipitation_mean))
 
-pred_dat_qm_2$pred <- predict(qm_2, pred_dat_qm_2, type = "response")
+pred_dat_qm_2 <- bind_cols(pred_dat_qm_2, as_tibble(predict(qm_2, pred_dat_qm_2, interval = "confidence")) )
+pred_dat_qm_2
 
-ggplot(data = mean_dat %>%
-         filter(exotic_grass_mean < 40) %>%
-         mutate(MAP = annual_precipitation_mean),
-       mapping = aes(x = exotic_grass_mean, 
-                     y = seedling_y_n_mean,
-                     colour = MAP)) +
-  geom_point() +
-  geom_errorbar(mapping = aes(ymin = seedling_y_n_mean - seedling_y_n_sd,
-                              ymax = seedling_y_n_mean + seedling_y_n_sd) ) +
+p_dat_2 <- 
+  mean_dat %>%
+  mutate(MAP = annual_precipitation_mean)
+
+p_quant_2 <- 
+  ggplot() +
+  geom_ribbon(data = pred_dat_qm_2,
+              mapping = aes(x = exotic_grass_mean, ymin = lower, ymax = higher),
+              fill = "black", alpha = 0.1) +
   geom_line(data = pred_dat_qm_2,
-            mapping = aes(x = exotic_grass_mean, y = pred), colour = "red") +
+            mapping = aes(x = exotic_grass_mean, y = fit), colour = "black") +
+  geom_point(data = p_dat_2,
+             mapping = aes(x = exotic_grass_mean, y = seedling_y_n_mean, colour = MAP)) +
+  geom_errorbar(data = p_dat_2,
+                mapping = aes(x = exotic_grass_mean,
+                              ymin = seedling_y_n_mean - seedling_y_n_sd,
+                              ymax = seedling_y_n_mean + seedling_y_n_sd,
+                              colour = MAP) ) +
   scale_colour_viridis_b() +
-  ylab("proportion plots seedling") +
+  ylab("") +
   xlab("exotic grass cover") +
   theme_classic()
 
+quants <- 
+  ggarrange(p_quant_1, p_quant_2, labels = c("(a)", "(b)"),
+          widths = c(1, 1.3), font.label = list(face = "plain", size = 11),
+          hjust = c(-0.2,-0.2))
 
+ggsave(here("figures_tables/fig_2.png"), quants, dpi = 300,
+       width = 15, height = 8, units = "cm")
 
 
 # paired analysis between sites
