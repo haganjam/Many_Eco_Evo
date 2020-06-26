@@ -914,7 +914,9 @@ ggplot(data = mean_dat %>%
 
 # exotic grass cover
 
-qm_2 <- rq(seedling_y_n_mean ~ exotic_grass_mean, tau = 0.9, data = mean_dat)
+qm_2 <- rq(seedling_y_n_mean ~ exotic_grass_mean, tau = 0.8, 
+           data = mean_dat %>%
+             filter(exotic_grass_mean < 40))
 summary(qm_2)
 
 pred_dat_qm_2 <- 
@@ -925,6 +927,7 @@ pred_dat_qm_2 <-
 pred_dat_qm_2$pred <- predict(qm_2, pred_dat_qm_2, type = "response")
 
 ggplot(data = mean_dat %>%
+         filter(exotic_grass_mean < 40) %>%
          mutate(MAP = annual_precipitation_mean),
        mapping = aes(x = exotic_grass_mean, 
                      y = seedling_y_n_mean,
