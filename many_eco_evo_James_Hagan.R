@@ -515,7 +515,6 @@ euc_ana %>%
 
 # 25% of plots have any recruitment
 
-
 # check the Sharrock property because it has very high recruitment
 euc_ana %>%
   gather("MrVBF",
@@ -604,6 +603,16 @@ mean_dat %>%
 
 
 # characterise the gradient:
+
+# are the plant cover variables correlated?
+mean_dat %>%
+  select(paste(covs, c("mean"), sep = "_")) %>%
+  pairs()
+
+mean_dat %>%
+  select(paste(covs, c("mean"), sep = "_")) %>%
+  cor(method = "spearman")
+
 
 # litter cover
 ggplot(data = mean_dat,
@@ -768,11 +777,19 @@ exp_vars <- list(c('1'),
                  c("native_perennial_grass_mean", cons_vars),
                  c("exotic_herbs_mean", cons_vars))
 
+exp_vars <- list(c('1'),
+                 c("exotic_proportion_mean"),
+                 c("total_grass_mean"),
+                 c("exotic_grass_mean"),
+                 c("native_perennial_grass_mean"),
+                 c("exotic_herbs_mean"))
+
+
 # set up a data frame to model with the transformed variables
 mod_dat <- 
   mean_dat %>%
-  mutate(exotic_grass_mean = sqrt(exotic_grass_mean),
-         exotic_herbs_mean = sqrt(exotic_herbs_mean))
+  mutate(exotic_grass_mean = (exotic_grass_mean),
+         exotic_herbs_mean = (exotic_herbs_mean))
 
 
 # binomial errors for prpportion data
@@ -835,27 +852,94 @@ View(diag_out_glm)
 # create a table to export
 names(diag_out_glm)
 
-diag_out_glm %>%
-  mutate(delta_AICc = AICc - min(AICc)) %>%
-  select(model, predictors, method, R.squared, AICc, delta_AICc, aicc_weights) %>%
-  arrange(desc(aicc_weights) ) %>%
-  write_csv(here("figures_tables/table_1.csv"))
+#diag_out_glm %>%
+  #mutate(delta_AICc = AICc - min(AICc)) %>%
+  #select(model, predictors, method, R.squared, AICc, delta_AICc, aicc_weights) %>%
+  #arrange(desc(aicc_weights) ) %>%
+  #write_csv(here("figures_tables/table_1.csv"))
 
 cof_out_glm %>%
   bind_rows(.id = "model")
 
-drop1(lm_out_glm[[1]], test = c("Chisq"))
+pred_dat <- 
+  data.frame(exotic_proportion_mean = seq(24, 88, 0.5),
+             annual_precipitation_mean = mean(mean_dat$annual_precipitation_mean))
 
-confint(lm_out_glm[[1]])
 
 # plot the predictions
-ggplot(data = mean_dat %>% filter(Property != "Sharrock") %>%
-         mutate(pred = predict(lm_out_glm[[3]], type = "response")),
+ggplot(data = mean_dat %>%
+         mutate(MAP = annual_precipitation_mean),
        mapping = aes(x = exotic_proportion_mean, 
-                     y = seedling_y_n_mean)) +
+                     y = seedling_y_n_mean, 
+                     colour = MAP)) +
   geom_point() +
-  geom_point(mapping = aes(y = pred), colour = "red") +
+  geom_errorbar(mapping = aes(ymin = seedling_y_n_mean - seedling_y_n_sd,
+                              ymax = seedling_y_n_mean + seedling_y_n_sd),
+                width = 0.1) +
+  geom_line(data = pred_dat, 
+            mapping = aes(x = exotic_proportion_mean, y = predict), colour = "red") +
+  geom_hline(yintercept = predict(lm_out_glm[[1]], type = "response")[1]) +
+  scale_colour_viridis_b() +
+  ylab("proportion plots seedling") +
+  xlab("exotic proportion") +
   theme_classic()
+
+
+# despite the low predictive power of the grass variables, they did have triangular distributions
+# we fit quantile regressions but these did not show any significant effects
+
+qm_1 <- rq(seedling_y_n_mean ~ total_grass_mean, tau = 0.9, data = mean_dat)
+summary(qm_1)
+
+pred_dat_qm_1 <- 
+  data.frame(total_grass_mean = seq(min(mean_dat$total_grass_mean), 
+                                    max(mean_dat$total_grass_mean), 0.5),
+             annual_precipitation_mean = mean(mean_dat$annual_precipitation_mean))
+
+pred_dat_qm_1$pred <- predict(qm_1, pred_dat_qm_1, type = "response")
+
+ggplot(data = mean_dat %>%
+         mutate(MAP = annual_precipitation_mean),
+       mapping = aes(x = total_grass_mean, y = seedling_y_n_mean, colour = MAP)) +
+  geom_point() +
+  geom_errorbar(mapping = aes(ymin = seedling_y_n_mean - seedling_y_n_sd,
+                              ymax = seedling_y_n_mean + seedling_y_n_sd) ) +
+  geom_line(data = pred_dat_qm_1,
+            mapping = aes(x = total_grass_mean, y = pred), colour = "red") +
+  scale_colour_viridis_b() +
+  ylab("proportion plots seedling") +
+  xlab("total grass cover") +
+  theme_classic()
+
+
+# exotic grass cover
+
+qm_2 <- rq(seedling_y_n_mean ~ exotic_grass_mean, tau = 0.9, data = mean_dat)
+summary(qm_2)
+
+pred_dat_qm_2 <- 
+  data.frame(exotic_grass_mean = seq(min(mean_dat$exotic_grass_mean), 
+                                    max(mean_dat$exotic_grass_mean), 0.5),
+             annual_precipitation_mean = mean(mean_dat$annual_precipitation_mean))
+
+pred_dat_qm_2$pred <- predict(qm_2, pred_dat_qm_2, type = "response")
+
+ggplot(data = mean_dat %>%
+         mutate(MAP = annual_precipitation_mean),
+       mapping = aes(x = exotic_grass_mean, 
+                     y = seedling_y_n_mean,
+                     colour = MAP)) +
+  geom_point() +
+  geom_errorbar(mapping = aes(ymin = seedling_y_n_mean - seedling_y_n_sd,
+                              ymax = seedling_y_n_mean + seedling_y_n_sd) ) +
+  geom_line(data = pred_dat_qm_2,
+            mapping = aes(x = exotic_grass_mean, y = pred), colour = "red") +
+  scale_colour_viridis_b() +
+  ylab("proportion plots seedling") +
+  xlab("exotic grass cover") +
+  theme_classic()
+
+
 
 
 # paired analysis between sites
