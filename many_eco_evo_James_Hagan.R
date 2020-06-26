@@ -537,6 +537,9 @@ euc_ana %>%
             total_cover = mean(total_cover),
             Litter_cover = mean(Litter_cover))
 
+euc_ana %>%
+  group_by(Property) %>%
+  summarise(n = unique(Property_season) %>% length())
 
 
 
