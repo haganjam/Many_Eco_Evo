@@ -8,13 +8,11 @@ library(tidyr)
 library(purrr)
 library(ggplot2)
 library(broom)
-library(RColorBrewer)
 library(viridis)
 library(here)
 library(corrplot)
-library(lme4)
 library(piecewiseSEM)
-library(nlme)
+library(quantreg)
 
 # make a folder to export figures and tables
 if(! dir.exists(here("figures_tables"))){
@@ -31,7 +29,7 @@ overdisp_fun <- function(model) {
   Pearson.chisq <- sum(rp^2)
   prat <- Pearson.chisq/rdf
   pval <- pchisq(Pearson.chisq, df=rdf, lower.tail=FALSE)
-  c(chisq=Pearson.chisq,ratio=prat,rdf=rdf,p=pval)
+  c(chisq = Pearson.chisq,ratio=prat,rdf=rdf,p=pval)
 }
 
 # AICc function from qPCR package
@@ -102,17 +100,32 @@ lapply(euc_dat, function(x) {
 
 # different rows have different types of missing data
 
+# examine the rows that were removed
+rem_rows <- 
+  euc_dat %>%
+  filter_all( any_vars( (is.na(.)) ) ) %>%
+  pull(SurveyID)
+
+euc_dat %>%
+  filter(SurveyID %in% rem_rows) %>%
+  View()
+
 # remove rows without complete data
 euc_dat <- 
   euc_dat %>%
   filter_all( all_vars( (!is.na(.)) ) )
+
+# check if the correct rows were removed
+euc_dat %>%
+  filter(SurveyID %in% rem_rows) %>% 
+  nrow()
 
 # check basic summary statistics
 summary(euc_dat)
 
 
 
-### create vectors with different variable combinations
+# create vectors with different variable combinations
 
 # site variables
 site_vars <- c("SurveyID", "Date", "Season", "Property", "quadrat_no", 
@@ -146,9 +159,9 @@ seed_vars <- c("euc_sdlgs0_50cm", "euc_sdlgs_50cm_2m", "euc_sdlgs_2m")
 
 
 
-### data exploration
+# data exploration
 
-### do remotely sensed sun variables represent aspect?
+# do remotely sensed sun variables represent aspect?
 
 euc_dat %>% 
   group_by(Aspect) %>%
@@ -169,15 +182,14 @@ euc_dat %>%
   facet_wrap(~Season, scales = "free")
 
 
-
-### do the remotely sensed variables represent landscape position?
+# do the remotely sensed variables represent landscape position?
 ggplot(data = euc_dat,
        mapping = aes(x = landscape_position, y = MrVBF)) +
   geom_point() +
   theme_classic()
 
 
-### how is Euc_canopy_cover and distance_to_Eucalypt_canopy_m correlated?
+# how is Euc_canopy_cover and distance_to_Eucalypt_canopy_m correlated?
 euc_vars
 
 ggplot(data = euc_dat,
@@ -196,7 +208,7 @@ euc_dat %>%
 # survey 239
 
 
-### check the precipitation variables
+# check the precipitation variables
 prec_vars
 
 euc_dat %>%
@@ -210,7 +222,7 @@ euc_dat %>%
 # all precipitation variables are highly correlated
 
 
-### check the soil variables
+# check the soil variables
 soil_vars
 
 euc_dat %>%
@@ -222,7 +234,7 @@ euc_dat %>%
   lapply(function (x) {select(x, soil_vars) %>% cor() } )
 
 
-### cover variables
+# cover variables
 cov_vars
 
 euc_dat %>%
@@ -285,7 +297,7 @@ euc_dat %>%
   theme(axis.text.x = element_text(angle = 90))
 
 
-### seedling variables
+# seedling variables
 seed_vars
 
 euc_dat %>%
@@ -311,14 +323,15 @@ euc_dat %>%
   )
 
 
-### analysis data
+
+# analysis data
 
 euc_ana <- 
   euc_dat %>%
   filter(SurveyID != 239) # removes data point with strange canopy cover value
 
 
-### create new analysis variables
+# create new analysis variables
 
 # sum-up the three seedling size classes
 
@@ -452,7 +465,6 @@ euc_ana %>%
 
 # surveyID = 44 has a very high number of small seedlings
 
-# which cover variables are important?
 
 # reduce the euc_ana variables
 names(euc_ana)
@@ -481,7 +493,7 @@ euc_ana <-
 
 
 
-### summary statistics
+# summary statistics
 
 # how much do different cover variables account for?
 
@@ -503,6 +515,9 @@ hist(prop_cov$prop)
 prop_cov %>% 
   filter(prop < 80) %>%
   View()
+
+mean(prop_cov$prop, na.rm = TRUE)
+sd(prop_cov$prop, na.rm = TRUE) 
 
 # how many plots in total?
 nrow(euc_ana)
@@ -543,10 +558,11 @@ euc_ana %>%
 
 
 
-# site-scale analysis: examine mean-level trends at the property scale (i.e. each Property)
+# between property analysis
 
 names(euc_ana)
 
+# choose a subset of variables to use
 fit_vars <- 
   c("MrVBF",
     "K_perc", "Th_ppm", "U_ppm",
@@ -566,14 +582,11 @@ fit_vars <-
     "euc_sdlgs0_50cm", "euc_sdlgs_50cm_2m", "euc_sdlgs_2m",
     "seedlings_all", "seedling_y_n", "young_seedling_y_n")
 
-# three cover variables account for the vast majority of plant cover
-covs
 
-# in addition, bare_all and Litter_cover are probably also important
-
-# seedling variables: 
-# - mean seedlings across plots
-# - proportion of plots with seedlings
+# summarise data at the property scale:
+# (1) calculate proportion of plots with seedlings at each property for each time point
+# (2) calculate the average for each variable (fit_vars) across plots for each time point at each property
+# (3) calcualte the average and standard deviation for each property across time points
 
 mean_dat <- 
   euc_ana %>%
@@ -583,28 +596,29 @@ mean_dat <-
                ~ mean(., na.rm = TRUE)) %>%
   ungroup() %>%
   group_by(Property) %>%
-  summarise_at(vars(all_of(fit_vars)), list( ~ mean(., na.rm = TRUE),
-                       ~ sd(., na.rm = TRUE) ) )
+  summarise_at(vars(all_of(fit_vars)), 
+               list( ~ mean(., na.rm = TRUE),
+                     ~ sd(., na.rm = TRUE) ) )
 
 
-# check the range of mean exotic cover
+# (Results: General site characteristics)
+
+# range of mean exotic cover
 range(mean_dat$exotic_proportion_mean)
 
 mean_dat %>%
   filter(exotic_proportion_mean == max(exotic_proportion_mean) | exotic_proportion_mean == min(exotic_proportion_mean)) %>%
   select(contains("exotic_proportion"))
 
+# mean and standard deviation proportion of exotic annual grass cover of total non-woody exotic plant cover
 mean_dat %>%
   mutate(egrass_prop = ExoticAnnualGrass_cover_mean/exotic_non_woody_mean) %>%
   summarise(m = mean(egrass_prop), sd = sd(egrass_prop))
 
+# calculate the range in total annual precipitation
 mean_dat %>%
   filter(annual_precipitation_mean == max(annual_precipitation_mean) | annual_precipitation_mean == min(annual_precipitation_mean)) %>%
   select(contains("annual_precipitation"))
-
-
-
-# characterise the gradient:
 
 # are the plant cover variables correlated?
 mean_dat %>%
@@ -616,7 +630,7 @@ mean_dat %>%
   cor(method = "spearman")
 
 
-# litter cover
+# is litter cover correlated with total annual precipitation?
 ggplot(data = mean_dat,
        mapping = aes(x = annual_precipitation_mean, y = Litter_cover_mean)) +
   geom_point()
@@ -624,9 +638,8 @@ ggplot(data = mean_dat,
 cor.test(mean_dat$annual_precipitation_mean, mean_dat$Litter_cover_mean,
          method = "spearman")
 
-# clear increase in litter cover along the rainfall gradient
 
-# total non-woody plant cover
+# is total non-woody plant cover correlated with total annual precipitation?
 ggplot(data = mean_dat,
        mapping = aes(x = annual_precipitation_mean, y = total_non_woody_mean)) +
   geom_point()
@@ -635,15 +648,13 @@ cor.test(mean_dat$annual_precipitation_mean, mean_dat$total_non_woody_mean,
          method = "spearman")
 
 
-# exotic plant cover
+# is exotic plant cover correlated with total annual precipitation?
 ggplot(data = mean_dat,
        mapping = aes(x = annual_precipitation_mean, y = exotic_non_woody_mean)) +
   geom_point()
 
 cor.test(mean_dat$annual_precipitation_mean, mean_dat$exotic_non_woody_mean,
          method = "spearman")
-
-# non-woody exotic plant cover increases with precipitation
 
 # these increases are due to increases in both exotic grass cover and exotic herb cover
 ggplot(data = mean_dat,
@@ -654,7 +665,8 @@ ggplot(data = mean_dat,
        mapping = aes(x = annual_precipitation_mean, y = exotic_herbs_mean)) +
   geom_point()
 
-# native plant cover
+
+# is native plant cover correlated with total annual precipitation?
 ggplot(data = mean_dat,
        mapping = aes(x = annual_precipitation_mean, y = native_non_woody_mean)) +
   geom_point()
@@ -663,9 +675,8 @@ ggplot(data = mean_dat,
        mapping = aes(x = annual_precipitation_mean, y = native_perennial_grass_mean)) +
   geom_point()
 
-# native non-woody plant cover also increases markedly along the rainfall gradient
 
-# total grass cover
+# is total grass cover correlated with total annual precipitation?
 ggplot(data = mean_dat,
        mapping = aes(x = annual_precipitation_mean, y = total_grass_mean)) +
   geom_point()
@@ -673,7 +684,8 @@ ggplot(data = mean_dat,
 cor.test(mean_dat$annual_precipitation_mean, mean_dat$total_grass_mean,
          method = "spearman")
 
-# do exotics dominate at wetter or drier sites?
+
+# does exotic proportion correlate with total annual precipitation?
 ggplot(data = mean_dat,
        mapping = aes(x = annual_precipitation_mean, y = exotic_proportion_mean)) +
   geom_point()
@@ -681,9 +693,17 @@ ggplot(data = mean_dat,
 cor.test(mean_dat$annual_precipitation_mean, mean_dat$exotic_proportion_mean,
          method = "spearman")
 
-# sites vary in how dominated they are by exotics but this isn't linked to rainfall
 
-# how do these cover variables relate to seedling recruitment
+# does distance to eucalypt canopy correlate with total annual precipitation?
+ggplot(data = mean_dat,
+       mapping = aes(x = annual_precipitation_mean, y = distance_to_Eucalypt_canopy_m_mean)) +
+  geom_point()
+
+cor.test(mean_dat$annual_precipitation_mean, mean_dat$distance_to_Eucalypt_canopy_m_mean,
+         method = "spearman")
+
+
+# additional bivariate correlations for interpretation purposes (results not presented)
 ggplot(data = mean_dat,
        mapping = aes(x = exotic_proportion_mean, y = seedling_y_n_mean)) +
   geom_point()
@@ -712,15 +732,6 @@ ggplot(data = mean_dat,
   geom_point()
 
 ggplot(data = mean_dat,
-       mapping = aes(x = annual_precipitation_mean, y = distance_to_Eucalypt_canopy_m_mean)) +
-  geom_point()
-
-cor.test(mean_dat$annual_precipitation_mean, mean_dat$distance_to_Eucalypt_canopy_m_mean,
-         method = "spearman")
-
-
-# which variables are correlated with exotic proportion?
-ggplot(data = mean_dat,
        mapping = aes(x = exotic_proportion_mean, y = total_grass_mean)) +
   geom_point()
 
@@ -736,7 +747,8 @@ ggplot(data = mean_dat,
        mapping = aes(x = exotic_proportion_mean, y = ExoticAnnualGrass_cover_mean)) +
   geom_point()
 
-# check if I'm missing any important variables by correlating exotic proportion with other explanatory variables
+
+# check other potentially important explanatory variables that I did not include
 mean_dat %>%
   gather("MrVBF_mean", "K_perc_mean", "Th_ppm_mean", "U_ppm_mean", "shrub_mean",
          "Euc_canopy_cover_mean",
@@ -746,12 +758,10 @@ mean_dat %>%
   geom_point() +
   facet_wrap(~pred, scales = "free")
 
-# other variables don't seem very important
 
+# (Results: Effect of grass cover on seedling recruitment between properties)
 
-# fit a generalised linear model to these data
-
-# how are the other three variables distributed?
+# examine distributions of the chosen explanatory variables
 mean_dat %>%
   select(exotic_proportion_mean, Litter_cover_mean, annual_precipitation_mean,
          distance_to_Eucalypt_canopy_m_mean, total_grass_mean, exotic_grass_mean,
@@ -763,7 +773,7 @@ mean_dat %>%
   facet_wrap(~var, scales = "free")
 
 
-# set up models
+# set up models to fit
 
 # variables to conserve in all models (i.e. moderators or covariates)
 cons_vars <- c("annual_precipitation_mean")
@@ -776,13 +786,6 @@ exp_vars <- list(c('1'),
                  c("exotic_grass_mean", cons_vars),
                  c("native_perennial_grass_mean", cons_vars),
                  c("exotic_herbs_mean", cons_vars))
-
-#exp_vars <- list(c('1'),
-                 #c("exotic_proportion_mean"),
-                 #c("total_grass_mean"),
-                 #c("exotic_grass_mean"),
-                 #c("native_perennial_grass_mean"),
-                 #c("exotic_herbs_mean"))
 
 
 # set up a data frame to model with the transformed variables
@@ -971,9 +974,6 @@ ggsave(here("figures_tables/fig_2.png"), quants, dpi = 300,
        width = 15, height = 8, units = "cm")
 
 
-# paired analysis between sites
-
-# i.e. do sites with any recruitment have different grass covers?
 
 # site-scale analysis: paired analysis for well-sampled sites
 
@@ -1022,6 +1022,15 @@ well_samps <-
   filter(`0` >= 2, `1` >= 2) %>%
   pull(Property_season)
 
+euc_ana %>%
+  group_by(Property, Season, Property_season, seedling_y_n) %>%
+  summarise(n = n()) %>%
+  ungroup() %>%
+  spread(key = "seedling_y_n", value = "n") %>%
+  filter(`0` >= 2, `1` >= 2) %>%
+  pull(Property) %>%
+  unique()
+
 # explore these data
 euc_ana %>%
   filter(Property_season %in% well_samps) %>%
@@ -1055,6 +1064,7 @@ g_vars <- c("native_perennial_grass",
 
 # negative values mean higher in no-recruit plots
 
+# do this analysis for all property-season combinations
 pair_dat <- 
   euc_ana %>%
   filter(Property_season %in% well_samps) %>%
@@ -1069,15 +1079,6 @@ pair_dat <-
   ungroup() %>%
   gather(paste(g_vars, c("m"), sep = "_"),
          key = "grass_variable", value = "cover")
-
-
-euc_ana$Property_season %>%
-  unique() %>%
-  length()
-
-pair_dat$Property_season %>%
-  unique() %>%
-  length()
 
 # create a vector of means for plotting
 pair_dat_means <- 
@@ -1168,5 +1169,42 @@ euc_ana %>%
   ungroup() %>%
   pull(n_diff) %>%
   t.test(x = ., alternative = c("two.sided"), mu = 0)
+
+
+# repeat this analysis with only strictly indepedent data points
+
+pair_dat_ind <- 
+  euc_ana %>%
+  filter(Property_season %in% well_samps) %>%
+  group_by(Property, Season, seedling_y_n) %>%
+  summarise_at(vars(g_vars),
+               list(m = ~ mean(., na.rm = TRUE),
+                    n = ~ n()) ) %>%
+  ungroup() %>%
+  group_by(Property, seedling_y_n) %>%
+  summarise_at(vars(paste(g_vars, c("m"), sep = "_")),
+               ~ mean(., na.rm = TRUE)) %>%
+  ungroup() %>%
+  group_by(Property) %>%
+  summarise_at(vars(paste(g_vars, c("m"), sep = "_")),
+               ~ diff(., na.rm = TRUE)) %>%
+  ungroup() %>%
+  gather(paste(g_vars, c("m"), sep = "_"),
+         key = "grass_variable", value = "cover")
+
+# perform the one-sample t-tests
+pair_dat_ind %>%
+  filter(grass_variable %in% grass_vars) %>%
+  split(., .$grass_variable) %>%
+  lapply(., function(x) { t.test(x = x$cover, alternative = c("two.sided"), mu = 0) })
+
+
+# perform one-sample t-tests on confounding variables
+pair_dat_ind %>%
+  filter(grass_variable %in% conf_vars) %>%
+  split(., .$grass_variable) %>%
+  lapply(., function(x) { t.test(x = x$cover, alternative = c("two.sided"), mu = 0) })
+
+
 
 
