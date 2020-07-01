@@ -13,6 +13,7 @@ library(here)
 library(corrplot)
 library(piecewiseSEM)
 library(quantreg)
+library(ggpubr)
 
 # make a folder to export figures and tables
 if(! dir.exists(here("figures_tables"))){
@@ -778,7 +779,7 @@ mean_dat %>%
 # variables to conserve in all models (i.e. moderators or covariates)
 cons_vars <- c("annual_precipitation_mean")
 
-# set up a list of explanatory variables for the four models
+# set up a list of explanatory variables for the seven models including an intercept-only null model
 exp_vars <- list(c('1'),
                  c(cons_vars),
                  c("exotic_proportion_mean", cons_vars),
@@ -788,14 +789,7 @@ exp_vars <- list(c('1'),
                  c("exotic_herbs_mean", cons_vars))
 
 
-# set up a data frame to model with the transformed variables
-mod_dat <- 
-  mean_dat %>%
-  mutate(exotic_grass_mean = (exotic_grass_mean),
-         exotic_herbs_mean = (exotic_herbs_mean))
-
-
-# binomial errors for prpportion data
+# use a loop to fit the different models using the glm() function with binomial errors
 
 # create output lists
 lm_out_glm <- vector("list", length = length(exp_vars))
@@ -807,7 +801,7 @@ for (i in seq_along( 1:length(exp_vars) ) ) {
   
   lm_out_glm[[i]] <- 
     glm(reformulate(exp_vars[[i]], "seedling_y_n_mean"), 
-        data = mod_dat,
+        data = mean_dat,
         family = binomial)
   
   cof_out_glm[[i]] <- tidy(lm_out_glm[[i]])
@@ -822,7 +816,7 @@ for (i in seq_along( 1:length(exp_vars) ) ) {
 # check model assumptions by plotting residuals against each variable
 lapply(lm_out_glm[2:length(lm_out_glm)], function(x) { 
   
-  mod_dat %>%
+  mean_dat %>%
     mutate(resids = residuals(x, type = "deviance"),
            preds = predict(x, type = "response")) %>%
     gather(unique(unlist(exp_vars[2:length(lm_out_glm)])), preds,
@@ -853,60 +847,44 @@ diag_out_glm$predictors <-
 View(diag_out_glm)
 
 # create a table to export
-names(diag_out_glm)
-
-#diag_out_glm %>%
-  #mutate(delta_AICc = AICc - min(AICc)) %>%
-  #select(model, predictors, method, R.squared, AICc, delta_AICc, aicc_weights) %>%
-  #arrange(desc(aicc_weights) ) %>%
-  #write_csv(here("figures_tables/table_1.csv"))
-
-cof_out_glm %>%
-  bind_rows(.id = "model")
-
-pred_dat <- 
-  data.frame(exotic_proportion_mean = seq(24, 88, 0.5),
-             annual_precipitation_mean = mean(mean_dat$annual_precipitation_mean))
-
-pred_dat$pred <- predict(lm_out_glm[[3]], pred_dat, type = "response")
-
-# plot the predictions
-ggplot(data = mean_dat %>%
-         mutate(MAP = annual_precipitation_mean),
-       mapping = aes(x = exotic_proportion_mean, 
-                     y = seedling_y_n_mean, 
-                     colour = MAP)) +
-  geom_point() +
-  geom_errorbar(mapping = aes(ymin = seedling_y_n_mean - seedling_y_n_sd,
-                              ymax = seedling_y_n_mean + seedling_y_n_sd),
-                width = 0.1) +
-  geom_line(data = pred_dat, 
-            mapping = aes(x = exotic_proportion_mean, y = pred), colour = "red") +
-  geom_hline(yintercept = predict(lm_out_glm[[1]], type = "response")[1]) +
-  scale_colour_viridis_b() +
-  ylab("proportion plots seedling") +
-  xlab("exotic proportion") +
-  theme_classic()
+diag_out_glm %>%
+  mutate(delta_AICc = AICc - min(AICc)) %>%
+  select(model, predictors, method, R.squared, AICc, delta_AICc, aicc_weights) %>%
+  arrange(desc(aicc_weights) ) %>%
+  write_csv(here("figures_tables/table_2.csv"))
 
 
-# despite the low predictive power of the grass variables, they did have triangular distributions
-# we fit quantile regressions but these did not show any significant effects
+# data exploration revealed triangular distirbutions between total_grass_cover and exotic grass cover with Eucalypt seedling proportion
+ggplot(data = mean_dat,
+       mapping = aes(x = total_grass_mean, y = seedling_y_n_mean)) +
+  geom_point()
 
+ggplot(data = mean_dat,
+       mapping = aes(x = exotic_grass_mean, y = seedling_y_n_mean)) +
+  geom_point()
+
+
+# fit linear quantile regression model to the 95th percentile of Eucalypt seedling proportion and total grass cover using the rq() function
 qm_1 <- rq(seedling_y_n_mean ~ total_grass_mean, tau = 0.95, data = mean_dat)
 summary.rq(qm_1, se = "ker")
 
+# output model predictions
 pred_dat_qm_1 <- 
   data.frame(total_grass_mean = seq(min(mean_dat$total_grass_mean), 
                                     max(mean_dat$total_grass_mean), 0.5),
              annual_precipitation_mean = mean(mean_dat$annual_precipitation_mean))
 
-pred_dat_qm_1 <- bind_cols(pred_dat_qm_1, as_tibble(predict(qm_1, pred_dat_qm_1, interval = "confidence")) )
+pred_dat_qm_1 <- 
+  bind_cols(pred_dat_qm_1, as_tibble(predict(qm_1, pred_dat_qm_1, interval = "confidence")) )
+
 pred_dat_qm_1
 
+# rename annual_precipitation_mean TAP for plotting
 p_dat_1 <- 
   mean_dat %>%
   mutate(MAP = annual_precipitation_mean)
 
+# plot the data and quantile regression model predictions
 p_quant_1 <- 
   ggplot() +
   geom_ribbon(data = pred_dat_qm_1,
@@ -921,30 +899,35 @@ p_quant_1 <-
                               ymin = seedling_y_n_mean - seedling_y_n_sd,
                               ymax = seedling_y_n_mean + seedling_y_n_sd,
                               colour = MAP) ) +
-  scale_colour_viridis_b() +
-  ylab("proportion plots seedling") +
-  xlab("total grass cover") +
+  scale_colour_viridis_c() +
+  scale_y_continuous(breaks = c(0, 0.5, 1)) +
+  ylab("Eucalypt seedling proportion") +
+  xlab("total grass cover (%)") +
   theme_classic() +
   theme(legend.position = "none")
 
 
-# exotic grass cover
-
+# fit linear quantile regression model to the 95th percentile of Eucalypt seedling proportion and exotic grass cover using the rq() function
 qm_2 <- rq(seedling_y_n_mean ~ exotic_grass_mean, tau = 0.95, 
            data = mean_dat, ci = FALSE)
 summary.rq(qm_2, se = "ker")
 
+# output model predictions
 pred_dat_qm_2 <- 
   data.frame(exotic_grass_mean = seq(min(mean_dat$exotic_grass_mean), 
                                     max(mean_dat$exotic_grass_mean), 0.5),
              annual_precipitation_mean = mean(mean_dat$annual_precipitation_mean))
 
-pred_dat_qm_2 <- bind_cols(pred_dat_qm_2, as_tibble(predict(qm_2, pred_dat_qm_2, interval = "confidence")) )
+pred_dat_qm_2 <- 
+  bind_cols(pred_dat_qm_2, 
+            as_tibble(predict(qm_2, pred_dat_qm_2, interval = "confidence")) )
+
 pred_dat_qm_2
 
+# rename the total annual precipitation TAP for plotting
 p_dat_2 <- 
   mean_dat %>%
-  mutate(MAP = annual_precipitation_mean)
+  mutate(TAP = annual_precipitation_mean)
 
 p_quant_2 <- 
   ggplot() +
@@ -954,29 +937,34 @@ p_quant_2 <-
   geom_line(data = pred_dat_qm_2,
             mapping = aes(x = exotic_grass_mean, y = fit), colour = "black") +
   geom_point(data = p_dat_2,
-             mapping = aes(x = exotic_grass_mean, y = seedling_y_n_mean, colour = MAP)) +
+             mapping = aes(x = exotic_grass_mean, y = seedling_y_n_mean, colour = TAP)) +
   geom_errorbar(data = p_dat_2,
                 mapping = aes(x = exotic_grass_mean,
                               ymin = seedling_y_n_mean - seedling_y_n_sd,
                               ymax = seedling_y_n_mean + seedling_y_n_sd,
-                              colour = MAP) ) +
-  scale_colour_viridis_b() +
+                              colour = TAP) ) +
+  scale_colour_viridis_c() +
+  scale_y_continuous(breaks = c(0, 0.5, 1)) +
   ylab("") +
-  xlab("exotic grass cover") +
+  xlab("exotic grass cover (%)") +
   theme_classic()
 
-quants <- 
+# arrange the plots together
+fig_1 <- 
   ggarrange(p_quant_1, p_quant_2, labels = c("(a)", "(b)"),
           widths = c(1, 1.3), font.label = list(face = "plain", size = 11),
           hjust = c(-0.2,-0.2))
 
-ggsave(here("figures_tables/fig_2.png"), quants, dpi = 300,
-       width = 15, height = 8, units = "cm")
+fig_1
+
+ggsave(here("figures_tables/fig_1.png"), fig_1, dpi = 300,
+       width = 17, height = 8, units = "cm")
 
 
 
-# site-scale analysis: paired analysis for well-sampled sites
+# (Results: Effect of grass cover on seedling recruitment within properties)
 
+# choose variables to consider in the analysis
 fit_vars2 <- 
   c("MrVBF",
     "K_perc", "Th_ppm", "U_ppm",
@@ -996,17 +984,14 @@ fit_vars2 <-
     "euc_sdlgs0_50cm", "euc_sdlgs_50cm_2m", "euc_sdlgs_2m",
     "seedlings_all", "seedling_y_n", "young_seedling_y_n")
 
-# there are many sites without any recruitment
-# then, for sites where there is some recruitment, there is like one plot
-# let's only use 'well-sampled' sites
-
-# how many properties have any recruitment?
+# how many properties do not have any Eucalypt seedling recruitment?
 euc_ana %>%
   group_by(Property) %>%
   summarise(n = sum(seedling_y_n, na.rm = TRUE)) %>%
   filter(n == 0) %>%
   pull(Property)
 
+# how many properties have at least two plots with recruitment?
 euc_ana %>%
   group_by(Property) %>%
   summarise(n = sum(seedling_y_n, na.rm = TRUE)) %>%
@@ -1014,6 +999,7 @@ euc_ana %>%
   pull(Property) %>%
   length()
 
+# create a vector of property-time combinations with two more plots with and without Eucalypt seedlings
 well_samps <- 
   euc_ana %>%
   group_by(Property, Season, Property_season, seedling_y_n) %>%
@@ -1022,14 +1008,26 @@ well_samps <-
   filter(`0` >= 2, `1` >= 2) %>%
   pull(Property_season)
 
+# how many properties to these well-sampled property-time combinations come from?
+euc_ana %>%
+  filter(Property_season %in% well_samps) %>%
+  pull(Property) %>%
+  unique()
+
+# table s1 - create a table of the property-time combinations used in the within-site analysis
 euc_ana %>%
   group_by(Property, Season, Property_season, seedling_y_n) %>%
   summarise(n = n()) %>%
-  ungroup() %>%
   spread(key = "seedling_y_n", value = "n") %>%
   filter(`0` >= 2, `1` >= 2) %>%
-  pull(Property) %>%
-  unique()
+  ungroup() %>%
+  select(-Property_season) %>%
+  rename(property = Property,
+         season = Season,
+         'plots without Eucalypt seedling (n)' = `0`,
+         'plots with Eucalypt seedling (n)' = `1`) %>%
+  write_csv(., here("figures_tables/table_s1.csv"))
+
 
 # explore these data
 euc_ana %>%
@@ -1051,7 +1049,8 @@ euc_ana %>%
     
     } )
 
-# define the variables
+
+# define the variables to use in the analysis
 g_vars <- c("native_perennial_grass",
             "exotic_grass",
             "total_grass",
@@ -1062,9 +1061,12 @@ g_vars <- c("native_perennial_grass",
             "Euc_canopy_cover", 
             "distance_to_Eucalypt_canopy_m")
 
-# negative values mean higher in no-recruit plots
 
-# do this analysis for all property-season combinations
+# for all property-time combinations in well_samps (n = 16):
+# calculate the average across plots with and without Eucalypt seedlings for each variable in g_vars
+# calculate the difference between the average value with and without Eucalypt seedlings for each variable
+# use gather() to make these data tidy
+
 pair_dat <- 
   euc_ana %>%
   filter(Property_season %in% well_samps) %>%
@@ -1080,21 +1082,40 @@ pair_dat <-
   gather(paste(g_vars, c("m"), sep = "_"),
          key = "grass_variable", value = "cover")
 
-# create a vector of means for plotting
+
+# use two-tailed, one-sample t-tests to test whether the difference in:
+# total grass cover
+# exotic grass cover
+# native grass cover
+# between plots with and without Eucalypt seedlings differs from zero
+
+# create a vector of these grass variables
+grass_vars <- c("total_grass_m",
+                "native_perennial_grass_m",
+                "exotic_grass_m")
+
+t_test_grass <- 
+  pair_dat %>%
+  filter(grass_variable %in% grass_vars) %>%
+  split(., .$grass_variable) %>%
+  lapply(., function(x) { t.test(x = x$cover, alternative = c("two.sided"), mu = 0) })
+
+t_test_grass
+
+
+# fig 2
+
+# for each variable, calculate a mean difference for plotting
 pair_dat_means <- 
   pair_dat %>%
   group_by(grass_variable) %>%
   summarise(cover = mean(cover, na.rm = TRUE) ) %>%
   ungroup()
 
-# plot and test the grass variables
-grass_vars <- c("total_grass_m",
-                "native_perennial_grass_m",
-                "exotic_grass_m")
-
-grass_axes <- c("total grass cover (%)",
-                "native grass cover (%)",
-                "exotic grass cover (%)")
+# set grass axes names
+grass_axes <- c("total grass cover diff. (%)",
+                "native grass cover diff. (%)",
+                "exotic grass cover diff. (%)")
 
 grass_out <- vector("list")
 
@@ -1108,23 +1129,25 @@ for(i in seq_along(1:length(grass_vars))) {
     geom_vline(xintercept = 0, linetype = "dashed") +
     geom_vline(data = filter(pair_dat_means, grass_variable == grass_vars[i]),
                mapping = aes(xintercept = cover), colour = "red") +
+    annotate("text", x = Inf, y = Inf, 
+             label = paste(c("t = "), round(t_test_grass[[i]]$statistic[[1]], 2), sep = "" ), 
+             hjust = 1, vjust = 2) +
+    annotate("text", x = Inf, y = Inf, 
+             label = paste(c("P = "), round(t_test_grass[[i]]$p.value[[1]], 2), sep = "" ), 
+             hjust = 1, vjust = 4) +
     xlab(grass_axes[i]) +
     ylab("frequency") +
     theme_classic()
 }
 
-p1 <- ggarrange(grass_out[[1]], grass_out[[2]], grass_out[[3]],
+fig_2 <- ggarrange(grass_out[[1]], grass_out[[2]], grass_out[[3]],
           ncol = 3, labels = c("(a)", "(b)", "(c)"),
           font.label = list(face = "plain", size = 11),
           hjust = c(-0.2,-0.2,-0.2))
 
-ggsave(here("figures_tables/fig_3.png"), p1, dpi = 300,
-       width = 20, height = 10, units = "cm")
+ggsave(here("figures_tables/fig_2.png"), fig_2, dpi = 300,
+       width = 20, height = 9, units = "cm")
 
-pair_dat %>%
-  filter(grass_variable %in% grass_vars) %>%
-  split(., .$grass_variable) %>%
-  lapply(., function(x) { t.test(x = x$cover, alternative = c("two.sided"), mu = 0) })
 
 
 # explore relationships between potential confounding variables
@@ -1141,24 +1164,25 @@ pair_dat_explan <-
                ~ diff(., na.rm = TRUE)) %>%
   ungroup()
 
-View(pair_dat_explan)
-
 pair_dat_explan %>%
   select(-Property, -Season, -Property_season) %>%
   pairs()
 
 # test these potentially confounding variables
 conf_vars <- c("Litter_cover_m",
-                "distance_to_Eucalypt_canopy_m_m",
-                "total_non_woody_m")
+               "distance_to_Eucalypt_canopy_m_m",
+               "total_non_woody_m")
 
-pair_dat %>%
+t_test_conf <- 
+  pair_dat %>%
   filter(grass_variable %in% conf_vars) %>%
   split(., .$grass_variable) %>%
   lapply(., function(x) { t.test(x = x$cover, alternative = c("two.sided"), mu = 0) })
 
+t_test_conf
 
-# in these property-season combinations, are the plots with and without eucalypt seedlings unbalanced
+
+# in these property-time combinations, are the plots with and without eucalypt seedlings unbalanced
 euc_ana %>%
   filter(Property_season %in% well_samps) %>%
   group_by(Property, Season, Property_season, seedling_y_n) %>%
@@ -1171,7 +1195,9 @@ euc_ana %>%
   t.test(x = ., alternative = c("two.sided"), mu = 0)
 
 
-# repeat this analysis with only strictly indepedent data points
+# (Methods and materials: Within-property analysis):
+
+# repeat the within-property analysis but using properties as replicates and not property-time combinations as these are not strictly indepedent
 
 pair_dat_ind <- 
   euc_ana %>%
@@ -1197,7 +1223,6 @@ pair_dat_ind %>%
   filter(grass_variable %in% grass_vars) %>%
   split(., .$grass_variable) %>%
   lapply(., function(x) { t.test(x = x$cover, alternative = c("two.sided"), mu = 0) })
-
 
 # perform one-sample t-tests on confounding variables
 pair_dat_ind %>%
