@@ -1016,7 +1016,8 @@ euc_ana %>%
   unique()
 
 # table s1 - create a table of the property-time combinations used in the within-site analysis
-euc_ana %>%
+table_s1 <- 
+  euc_ana %>%
   group_by(Property, Season, Property_season, seedling_y_n) %>%
   summarise(n = n()) %>%
   spread(key = "seedling_y_n", value = "n") %>%
@@ -1026,8 +1027,10 @@ euc_ana %>%
   rename(property = Property,
          season = Season,
          'plots without Eucalypt seedling (n)' = `0`,
-         'plots with Eucalypt seedling (n)' = `1`) %>%
-  write_csv(., here("figures_tables/table_s1.csv"))
+         'plots with Eucalypt seedling (n)' = `1`)
+
+# write table s1 into a csv file
+write_csv(table_s1, here("figures_tables/table_s1.csv"))
 
 
 # explore these data
