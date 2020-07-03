@@ -760,6 +760,7 @@ mean_dat %>%
   facet_wrap(~pred, scales = "free")
 
 
+
 # (Results: Effect of grass cover on seedling recruitment between properties)
 
 # examine distributions of the chosen explanatory variables
@@ -1149,8 +1150,7 @@ ggsave(here("figures_tables/fig_2.png"), fig_2, dpi = 300,
        width = 20, height = 9, units = "cm")
 
 
-
-# explore relationships between potential confounding variables
+# are these results due to confounding variables?
 pair_dat_explan <- 
   euc_ana %>%
   filter(Property_season %in% well_samps) %>%
@@ -1195,43 +1195,7 @@ euc_ana %>%
   t.test(x = ., alternative = c("two.sided"), mu = 0)
 
 
-# (Methods and materials: Within-property analysis):
-
-# repeat the within-property analysis but using properties as replicates and not property-time combinations as these are not strictly indepedent
-
-pair_dat_ind <- 
-  euc_ana %>%
-  filter(Property_season %in% well_samps) %>%
-  group_by(Property, Season, seedling_y_n) %>%
-  summarise_at(vars(g_vars),
-               list(m = ~ mean(., na.rm = TRUE),
-                    n = ~ n()) ) %>%
-  ungroup() %>%
-  group_by(Property, seedling_y_n) %>%
-  summarise_at(vars(paste(g_vars, c("m"), sep = "_")),
-               ~ mean(., na.rm = TRUE)) %>%
-  ungroup() %>%
-  group_by(Property) %>%
-  summarise_at(vars(paste(g_vars, c("m"), sep = "_")),
-               ~ diff(., na.rm = TRUE)) %>%
-  ungroup() %>%
-  gather(paste(g_vars, c("m"), sep = "_"),
-         key = "grass_variable", value = "cover")
-
-# perform the one-sample t-tests
-pair_dat_ind %>%
-  filter(grass_variable %in% grass_vars) %>%
-  split(., .$grass_variable) %>%
-  lapply(., function(x) { t.test(x = x$cover, alternative = c("two.sided"), mu = 0) })
-
-# perform one-sample t-tests on confounding variables
-pair_dat_ind %>%
-  filter(grass_variable %in% conf_vars) %>%
-  split(., .$grass_variable) %>%
-  lapply(., function(x) { t.test(x = x$cover, alternative = c("two.sided"), mu = 0) })
-
-
-# are the differences in grass cover variables correlated with differences in confounding variables?
+# are the differences in grass cover variables correlated with differences among property-time combinations in other variables?
 
 grass_cover <- c("native_perennial_grass",
                  "exotic_grass",
@@ -1260,7 +1224,9 @@ conf <- c("total_non_woody",
           "distance_to_Eucalypt_canopy_m",
           "annual_precipitation")
 
-corr_conf <- 
+
+# get mean of confounding variables at the property-time scale
+corr_conf_mean <- 
   euc_ana %>%
   filter(Property_season %in% well_samps) %>%
   group_by(Property, Season, Property_season) %>%
@@ -1271,31 +1237,95 @@ corr_conf <-
          key = "conf_variable",
          value = "value")
 
+
+# get differences among confounding variables at the property-time scale
+corr_conf_diff <- 
+  euc_ana %>%
+  filter(Property_season %in% well_samps) %>%
+  group_by(Property, Season, Property_season, seedling_y_n) %>%
+  summarise_at(vars(conf), ~ mean(., na.rm = TRUE)) %>%
+  ungroup() %>%
+  group_by(Property, Season, Property_season) %>%
+  summarise_at(vars(conf), ~ diff(., na.rm = TRUE)) %>%
+  ungroup() %>%
+  select(-Property, -Season) %>%
+  gather(conf, 
+         key = "conf_variable",
+         value = "value")
+
+
+
 # join these dataframes
 
-diff_cor <- 
-  full_join(corr_conf,
-            diff_cor,
-            by = "Property_season")
+conf_ana <- 
+  list(conf_mean = full_join(corr_conf_mean, diff_cor, by = "Property_season"),
+       conf_diff = full_join(corr_conf_diff, diff_cor, by = "Property_season") )
 
 View(diff_cor)
 
 # rename the grass variables for plotting
 
-diff_cor <- 
-  diff_cor %>%
-  mutate(grass_variable = if_else(grass_variable == "exotic_grass",
-                                  "exotic grass (%)",
-                                  if_else(grass_variable == "total_grass",
-                                          "total grass (%)", "native per. grass (%)"))) %>%
-  rename('grass variable' = grass_variable)
+conf_ana <- 
+  lapply(conf_ana, function(x) {
   
+  mutate(x, grass_variable = if_else(grass_variable == "exotic_grass",
+                                    "exotic grass (%)",
+                                    if_else(grass_variable == "total_grass",
+                                            "total grass (%)", "native per. grass (%)"))) %>%
+    rename('grass variable' = grass_variable)
+  
+})
+
+spear_out <- vector("list", length = length(conf_ana))
+names(spear_out) <- c("conf_mean", "conf_diff")
+
+for (i in seq_along(1:length(conf_ana))) {
+  
+  w <- split(conf_ana[[i]], conf_ana[[i]]$conf_variable)
+  
+  z <- lapply(w, function(x) {
+    
+    split(x, x$`grass variable`) %>%
+      lapply(., function(y) {
+        cor.test(x = y$value,
+                 y = y$cover_difference,
+                 method = "spearman") %>%
+          tidy() 
+      }
+      ) %>%
+      bind_rows(., .id = "grass_variable")
+  })
+  
+  spear_out[[i]] <- bind_rows(z, .id = "variable")
+  
+}
+  
+spear_out
+
+# make a table of the correlations with the mean
+table_3 <- 
+  spear_out$conf_mean %>%
+  select(variable, grass_variable, estimate, statistic, p.value) %>%
+  gather(estimate, statistic, p.value,
+         key = "stat", value = "val") %>%
+  spread(grass_variable, val) %>%
+  mutate_at(vars(c("exotic grass (%)", "native per. grass (%)", "total grass (%)")),
+            ~ round(., digits = 2))
+
+table_s2 <- 
+  spear_out$conf_diff %>%
+  select(variable, grass_variable, estimate, statistic, p.value) %>%
+  gather(estimate, statistic, p.value,
+         key = "stat", value = "val") %>%
+  spread(grass_variable, val) %>%
+  mutate_at(vars(c("exotic grass (%)", "native per. grass (%)", "total grass (%)")),
+            ~ round(., digits = 2))
 
 
-# plot out the relationship between these confounding variables and the grass cover difference
+# plot out the relationship between the mean of these confounding variables and the grass cover difference
 
 diff_cor_plot <- 
-  split(diff_cor, diff_cor$conf_variable)
+  split(conf_ana[[1]], conf_ana[[1]]$conf_variable)
   
 xlabs <- c("total annual precipitation (mm)", "distance to Eucalypt canopy (m)",
            "litter cover (%)", "non-woody plant cover (%)")
@@ -1332,69 +1362,47 @@ fig_3 <-
 ggsave(here("figures_tables/fig_3.png"), fig_3, dpi = 300,
        width = 20, height = 15, units = "cm")
 
-spearman_out <- 
-  
-  lapply(diff_cor_plot, function(x) {
-  
-  split(x, x$`grass variable`) %>%
-    lapply(., function(y) {
-      cor.test(x = y$value,
-               y = y$cover_difference,
-               method = "spearman") %>%
-        tidy() 
-    }
-    ) %>%
-    bind_rows(., .id = "grass_variable")
-  
-})
-
-# bind into a dataframe  
-spearman_out <- 
-  spearman_out %>%
-  bind_rows(., .id = "variable")
-
-table_3 <- 
-  spearman_out %>%
-  select(variable, grass_variable, estimate, statistic, p.value) %>%
-  gather(estimate, statistic, p.value,
-         key = "stat", value = "val") %>%
-  spread(grass_variable, val) %>%
-  mutate_at(vars(c("exotic grass (%)", "native per. grass (%)", "total grass (%)")),
-               ~ round(., digits = 2))
 
 
+
+# write table 3 into a csv
 write_csv(table_3, path = here("figures_tables/table_3.csv"))
 
 
+# (Methods and materials: Within-property analysis):
 
+# repeat the within-property analysis but using properties as replicates and not property-time combinations as these are not strictly indepedent
 
-# examine whether differences grass cover are explained by confounding variables
-diff_cor %>%
-  select(-Property, -Season, -Property_season) %>%
-  pairs()
+pair_dat_ind <- 
+  euc_ana %>%
+  filter(Property_season %in% well_samps) %>%
+  group_by(Property, Season, seedling_y_n) %>%
+  summarise_at(vars(g_vars),
+               list(m = ~ mean(., na.rm = TRUE),
+                    n = ~ n()) ) %>%
+  ungroup() %>%
+  group_by(Property, seedling_y_n) %>%
+  summarise_at(vars(paste(g_vars, c("m"), sep = "_")),
+               ~ mean(., na.rm = TRUE)) %>%
+  ungroup() %>%
+  group_by(Property) %>%
+  summarise_at(vars(paste(g_vars, c("m"), sep = "_")),
+               ~ diff(., na.rm = TRUE)) %>%
+  ungroup() %>%
+  gather(paste(g_vars, c("m"), sep = "_"),
+         key = "grass_variable", value = "cover")
 
-diff_cor %>%
-  select(-Property, -Season, -Property_season) %>%
-  cor(method = "spearman") %>%
-  corrplot(method = "number", type = "lower")
+# perform the one-sample t-tests
+pair_dat_ind %>%
+  filter(grass_variable %in% grass_vars) %>%
+  split(., .$grass_variable) %>%
+  lapply(., function(x) { t.test(x = x$cover, alternative = c("two.sided"), mu = 0) })
 
-
-# plot three correlation matrices for each grass cover variables
-
-diff_cor %>%
-  select(paste(grass_cover[1], "m", sep = "_"), conf) %>%
-  cor(method = "spearman") %>%
-  corrplot(method = "number", type = "lower", diag = FALSE)
-  
-diff_cor %>%
-  select(paste(grass_cover[1], "m", sep = "_"), conf) %>%
-  pairs()
-
-diff_cor %>%
-  gather(native_perennial_grass_m)
-
-
-
+# perform one-sample t-tests on confounding variables
+pair_dat_ind %>%
+  filter(grass_variable %in% conf_vars) %>%
+  split(., .$grass_variable) %>%
+  lapply(., function(x) { t.test(x = x$cover, alternative = c("two.sided"), mu = 0) })
 
 
 
