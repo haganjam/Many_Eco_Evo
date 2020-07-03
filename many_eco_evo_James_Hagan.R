@@ -867,7 +867,7 @@ ggplot(data = mean_dat,
 
 # fit linear quantile regression model to the 95th percentile of Eucalypt seedling proportion and total grass cover using the rq() function
 qm_1 <- rq(seedling_y_n_mean ~ total_grass_mean, tau = 0.95, data = mean_dat)
-summary.rq(qm_1, se = "ker")
+summary.rq(qm_1, se = "boot", bsmethod= "wild")
 
 # output model predictions
 pred_dat_qm_1 <- 
@@ -911,7 +911,7 @@ p_quant_1 <-
 # fit linear quantile regression model to the 95th percentile of Eucalypt seedling proportion and exotic grass cover using the rq() function
 qm_2 <- rq(seedling_y_n_mean ~ exotic_grass_mean, tau = 0.95, 
            data = mean_dat, ci = FALSE)
-summary.rq(qm_2, se = "ker")
+summary.rq(qm_2, se = "boot", bsmethod= "wild")
 
 # output model predictions
 pred_dat_qm_2 <- 
