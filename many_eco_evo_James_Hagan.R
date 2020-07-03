@@ -1319,7 +1319,8 @@ table_s2 <-
          key = "stat", value = "val") %>%
   spread(grass_variable, val) %>%
   mutate_at(vars(c("exotic grass (%)", "native per. grass (%)", "total grass (%)")),
-            ~ round(., digits = 2))
+            ~ round(., digits = 2)) %>%
+  filter(variable != "annual_precipitation")
 
 
 # plot out the relationship between the mean of these confounding variables and the grass cover difference
@@ -1340,7 +1341,7 @@ for (i in seq_along(1:length(diff_cor_plot)) ) {
     
     ggplot(data = diff_cor_plot[[i]],
          mapping = aes(x = value, y = cover_difference, colour = `grass variable`)) +
-    geom_point(size = 2, shape = 16) +
+    geom_point(size = 3, shape = 16, alpha = 0.8) +
     xlab(c(xlabs[i])) +
     ylab(c(ylabs[i])) +
     scale_colour_viridis_d() +
@@ -1360,13 +1361,15 @@ fig_3 <-
           font.label = list(face = "plain", size = 11))
 
 ggsave(here("figures_tables/fig_3.png"), fig_3, dpi = 300,
-       width = 20, height = 15, units = "cm")
-
-
+       width = 20, height = 13, units = "cm")
 
 
 # write table 3 into a csv
 write_csv(table_3, path = here("figures_tables/table_3.csv"))
+
+# write table S2 into a csv
+write_csv(table_s2, path = here("figures_tables/table_s2.csv"))
+
 
 
 # (Methods and materials: Within-property analysis):
