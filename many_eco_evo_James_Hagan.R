@@ -21,17 +21,7 @@ if(! dir.exists(here("figures_tables"))){
 }
 
 
-# define some useful functions
-
-# load the overdispersion function (GLMM FAQ)
-overdisp_fun <- function(model) {
-  rdf <- df.residual(model)
-  rp <- residuals(model,type="pearson")
-  Pearson.chisq <- sum(rp^2)
-  prat <- Pearson.chisq/rdf
-  pval <- pchisq(Pearson.chisq, df=rdf, lower.tail=FALSE)
-  c(chisq = Pearson.chisq,ratio=prat,rdf=rdf,p=pval)
-}
+# define functions used in the analyses
 
 # AICc function from qPCR package
 AICc <- function(object)
@@ -53,12 +43,6 @@ akaike.weights <- function(x)
   weights.aic <- rel.LL/sum.LL
   return(list(deltaAIC = delta.aic, rel.LL = rel.LL, weights = weights.aic))
 }
-
-# scale and center function
-scale_this <- 
-  function(x){
-    (x - mean(x, na.rm = TRUE)) / sd(x, na.rm=TRUE)
-  }
 
 
 # load the data
@@ -587,13 +571,13 @@ fit_vars <-
 # summarise data at the property scale:
 # (1) calculate proportion of plots with seedlings at each property for each time point
 # (2) calculate the average for each variable (fit_vars) across plots for each time point at each property
-# (3) calcualte the average and standard deviation for each property across time points
+# (3) calculate the average and standard deviation for each property across time points
 
 mean_dat <- 
   euc_ana %>%
   group_by(Property, Season) %>%
   mutate(seedling_y_n = sum(seedling_y_n, na.rm = TRUE)/n()) %>%
-  summarise_at(vars(fit_vars),
+  summarise_at(vars(all_of(fit_vars) ),
                ~ mean(., na.rm = TRUE)) %>%
   ungroup() %>%
   group_by(Property) %>%
@@ -676,6 +660,8 @@ ggplot(data = mean_dat,
        mapping = aes(x = annual_precipitation_mean, y = native_perennial_grass_mean)) +
   geom_point()
 
+cor(mean_dat$annual_precipitation_mean, y = mean_dat$native_perennial_grass_mean)
+
 
 # is total grass cover correlated with total annual precipitation?
 ggplot(data = mean_dat,
@@ -748,6 +734,14 @@ ggplot(data = mean_dat,
        mapping = aes(x = exotic_proportion_mean, y = ExoticAnnualGrass_cover_mean)) +
   geom_point()
 
+ggplot(data = mean_dat,
+       mapping = aes(x = exotic_herbs_mean, y = annual_precipitation_mean)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+
+cor.test(x = mean_dat$exotic_herbs_mean, y = mean_dat$annual_precipitation_mean,
+         method = "spearman")
+
 
 # check other potentially important explanatory variables that I did not include
 mean_dat %>%
@@ -783,11 +777,9 @@ cons_vars <- c("annual_precipitation_mean")
 # set up a list of explanatory variables for the seven models including an intercept-only null model
 exp_vars <- list(c('1'),
                  c(cons_vars),
-                 c("exotic_proportion_mean", cons_vars),
                  c("total_grass_mean", cons_vars),
                  c("exotic_grass_mean", cons_vars),
-                 c("native_perennial_grass_mean", cons_vars),
-                 c("exotic_herbs_mean", cons_vars))
+                 c("native_perennial_grass_mean", cons_vars))
 
 
 # use a loop to fit the different models using the glm() function with binomial errors
@@ -813,6 +805,8 @@ for (i in seq_along( 1:length(exp_vars) ) ) {
            AICc = AICc(lm_out_glm[[i]]))
   
 }
+
+lm_out_glm[[1]]$family
 
 # check model assumptions by plotting residuals against each variable
 lapply(lm_out_glm[2:length(lm_out_glm)], function(x) { 
@@ -855,7 +849,7 @@ diag_out_glm %>%
   write_csv(here("figures_tables/table_2.csv"))
 
 
-# data exploration revealed triangular distirbutions between total_grass_cover and exotic grass cover with Eucalypt seedling proportion
+# data exploration revealed triangular distributions between total_grass_cover and exotic grass cover with Eucalypt seedling proportion
 ggplot(data = mean_dat,
        mapping = aes(x = total_grass_mean, y = seedling_y_n_mean)) +
   geom_point()
