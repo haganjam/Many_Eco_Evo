@@ -1,5 +1,5 @@
 
-# Title: ManyEcoEvo analysis (James G. Hagan)
+# Title: ManyEcoEvo analysis
 
 # load relevant libraries
 library(readr)
