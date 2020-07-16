@@ -508,6 +508,9 @@ euc_ana %>%
 
 # ca. 25% of plots have any recruitment
 
+euc_ana %>%
+  View()
+
 
 # check the Sharrock property because it has very high recruitment
 euc_ana %>%
@@ -1020,6 +1023,7 @@ well_samps <-
   filter(`0` >= 2, `1` >= 2) %>%
   pull(Property_season)
 
+
 # how many properties to these well-sampled property-time combinations come from?
 euc_ana %>%
   filter(Property_season %in% well_samps) %>%
@@ -1056,7 +1060,7 @@ euc_ana %>%
     
     ggplot(data = x,
            mapping = aes(x = seedling_y_n, y = val, colour = Season)) +
-      geom_point() +
+      geom_jitter(width = 0.1) +
       geom_smooth(method = "lm", se = FALSE) +
       facet_wrap(~Property, scales = "free") +
       theme_classic() +
@@ -1268,16 +1272,13 @@ corr_conf_diff <-
          value = "value")
 
 
-
 # join these dataframes
-
 conf_ana <- 
   list(conf_mean = full_join(corr_conf_mean, diff_cor, by = "Property_season"),
        conf_diff = full_join(corr_conf_diff, diff_cor, by = "Property_season") )
 
 
 # rename the grass variables for plotting
-
 conf_ana <- 
   lapply(conf_ana, function(x) {
   
@@ -1341,7 +1342,6 @@ table_s2 <-
 
 
 # plot out the relationship between the mean of these confounding variables and the grass cover difference
-
 diff_cor_plot <- 
   split(conf_ana[[1]], conf_ana[[1]]$conf_variable)
   
