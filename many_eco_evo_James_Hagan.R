@@ -313,7 +313,6 @@ euc_ana <-
 # create new analysis variables
 
 # sum-up the three seedling size classes
-
 euc_ana$seedlings_all <- 
   euc_ana %>%
   select(all_of(seed_vars) ) %>%
@@ -322,12 +321,10 @@ euc_ana$seedlings_all <-
 # sum-up the'bare ground' type variables:
 # BareGround_cover
 # MossLichen_cover
-
 euc_ana$bare_all <- 
   euc_ana %>%
   select(BareGround_cover, MossLichen_cover) %>%
   rowSums()
-
 
 # exotic plant variables
 
@@ -376,7 +373,6 @@ euc_ana$native_non_woody <-
 # composite plant variables
 
 # create a total grass variable
-
 euc_ana$total_grass <- 
   euc_ana %>%
   select("NativePerennialGrass_cover", "NativePerennialGraminoid_cover",
@@ -394,7 +390,6 @@ euc_ana$total_non_woody <-
          ) %>%
   rowSums()
 
-
 # create a shrub cover variable
 euc_ana$shrub <- 
   euc_ana %>%
@@ -410,12 +405,10 @@ euc_ana <-
   euc_ana %>%
   mutate(Property_season = paste(Property, Season, sep = "_"))
 
-
 # create a seedling_y_n variables for all seedlings
 euc_ana <- 
   euc_ana %>%
   mutate(seedling_y_n = if_else(seedlings_all > 0, 1, 0))
-
 
 # create a young seedling variable
 euc_ana <- 
