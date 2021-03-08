@@ -93,8 +93,7 @@ rem_rows <-
   pull(SurveyID)
 
 euc_dat %>%
-  filter(SurveyID %in% rem_rows) %>%
-  View()
+  filter(SurveyID %in% rem_rows)
 
 # remove rows without complete data
 euc_dat <- 
@@ -182,8 +181,7 @@ ggplot(data = euc_dat,
   theme_classic()
 
 euc_dat %>%
-  filter(Euc_canopy_cover > 0, distance_to_Eucalypt_canopy_m > 0) %>%
-  View()
+  filter(Euc_canopy_cover > 0, distance_to_Eucalypt_canopy_m > 0)
 
 # strange value where canopy cover is high despite nearest Eucalyptus 38 m away?
 
@@ -485,8 +483,7 @@ summary(prop_cov)
 hist(prop_cov$prop)
 
 prop_cov %>% 
-  filter(prop < 80) %>%
-  View()
+  filter(prop < 80)
 
 mean(prop_cov$prop, na.rm = TRUE)
 sd(prop_cov$prop, na.rm = TRUE) 
@@ -501,8 +498,7 @@ euc_ana %>%
 
 # ca. 25% of plots have any recruitment
 
-euc_ana %>%
-  View()
+euc_ana
 
 
 # check the Sharrock property because it has very high recruitment
@@ -841,7 +837,7 @@ diag_out_glm$predictors <-
   paste(x, collapse = ".")  }) %>%
   unlist()
 
-View(diag_out_glm)
+# View(diag_out_glm)
 
 # table 2
 diag_out_glm %>%
